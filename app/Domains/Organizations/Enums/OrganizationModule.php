@@ -23,6 +23,7 @@ enum OrganizationModule: string
     case MultiCurrency = 'multi_currency';
     case Consolidation = 'consolidation';
     case Payroll = 'payroll';
+    case ImpactAccounting = 'impact_accounting';
 
     /** @return string[] */
     public static function values(): array
@@ -51,6 +52,7 @@ enum OrganizationModule: string
                 'multi_currency' => false,
                 'consolidation' => false,
                 'payroll' => false,
+                'impact_accounting' => false,
             ],
             'sme' => [
                 'budgets' => true,
@@ -65,6 +67,7 @@ enum OrganizationModule: string
                 'multi_currency' => false,
                 'consolidation' => false,
                 'payroll' => true,
+                'impact_accounting' => false,
             ],
             'fiduciary' => [
                 'budgets' => true,
@@ -79,6 +82,7 @@ enum OrganizationModule: string
                 'multi_currency' => true,
                 'consolidation' => true,
                 'payroll' => true,
+                'impact_accounting' => false,
             ],
         ];
     }

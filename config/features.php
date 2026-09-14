@@ -41,6 +41,7 @@ return [
     'rule_engine' => env('FEATURE_RULE_ENGINE', false),
     'advanced_permissions' => env('FEATURE_ADVANCED_PERMISSIONS', false),
     'analytical' => env('FEATURE_ANALYTICAL', false),
+    'impact_accounting' => env('FEATURE_IMPACT_ACCOUNTING', false),
     'withholding_tax' => env('FEATURE_WITHHOLDING_TAX', false),
     'tax_declaration' => env('FEATURE_TAX_DECLARATION', false),
     'e_invoicing' => env('FEATURE_E_INVOICING', false),

@@ -132,6 +132,7 @@ Route::middleware(['auth', 'verified', 'org', 'org-2fa', 'subscription'])->group
     // Domain-specific route files
     require __DIR__.'/web/accounting.php';
     require __DIR__.'/web/reporting.php';
+    require __DIR__.'/web/impact-accounting.php';
     require __DIR__.'/web/invoicing.php';
     require __DIR__.'/web/expenses.php';
     require __DIR__.'/web/banking.php';

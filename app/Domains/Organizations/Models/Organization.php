@@ -7,6 +7,7 @@ use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Banking\Models\BankAccount;
 use App\Domains\Contacts\Models\Contact;
 use App\Domains\Expenses\Models\ExpenseCategory;
+use App\Domains\ImpactAccounting\Models\OrganizationActivity;
 use App\Domains\Organizations\Enums\BusinessType;
 use App\Domains\Users\Models\User;
 use App\Support\Contracts\SubscriptionContract;
@@ -186,6 +187,12 @@ class Organization extends Model
     public function bankAccounts(): HasMany
     {
         return $this->hasMany(BankAccount::class);
+    }
+
+    /** @return HasMany<OrganizationActivity, $this> */
+    public function organizationActivities(): HasMany
+    {
+        return $this->hasMany(OrganizationActivity::class);
     }
 
     /**
