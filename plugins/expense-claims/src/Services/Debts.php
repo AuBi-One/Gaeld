@@ -59,7 +59,8 @@ final class Debts
                     accountId: $this->accounts->id($orgId, (string) $code),
                     debit: Money::sumAmounts($group->map(fn (Claim $c): array => ['amount' => (string) $c->total])->all()),
                     credit: '0',
-                    description: 'Notes de frais '.$group->map->reference()->implode(', '),
+                    // Line descriptions are limited to 255 characters; a year of claims exceeds it.
+                    description: mb_strimwidth('Notes de frais '.$group->map->reference()->implode(', '), 0, 255, '…'),
                 ))
                 ->values()
                 ->all();

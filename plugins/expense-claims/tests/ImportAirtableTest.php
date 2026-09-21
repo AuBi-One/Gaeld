@@ -7,6 +7,7 @@ require_once __DIR__.'/ExpenseClaimsTestCase.php';
 use App\Domains\Accounting\Models\JournalEntry;
 use PHPUnit\Framework\Attributes\Test;
 use Plugins\ExpenseClaims\Models\Claim;
+use Plugins\ExpenseClaims\Models\DebtRecord;
 use Plugins\ExpenseClaims\Models\Person;
 use Plugins\ExpenseClaims\Models\Place;
 
@@ -100,5 +101,53 @@ class ImportAirtableTest extends ExpenseClaimsTestCase
         $this->artisan('expense-claims:import-airtable', ['file' => $claims, '--org' => $this->org->id, '--commit' => true])->assertSuccessful();
 
         $this->assertSame('Alice', Claim::with('person')->firstOrFail()->person->name);
+    }
+
+    #[Test]
+    public function book_approves_unpaid_claims_at_the_recomputed_amount(): void
+    {
+        Person::create(['organization_id' => $this->org->id, 'name' => 'Alice', 'is_owner' => true]);
+        Place::create(['organization_id' => $this->org->id, 'kind' => 'hq', 'label' => 'Bureau']);
+        $employees = $this->file('emp', [['id' => 'recA', 'fields' => ['Employé' => 'Alice']]]);
+        $claims = $this->file('rep', [
+            ['id' => 'recB1', 'fields' => ['Date' => '2025-03-01', 'Qui' => ['recA'], 'Type' => 'Trajet', 'Titre' => 'X', 'Distance' => 100, 'Montant final' => 75.0, 'Statut' => 'A payer']],
+            ['id' => 'recB2', 'fields' => ['Date' => '2025-04-01', 'Qui' => ['recA'], 'Type' => 'Repas', 'Titre' => 'Y', 'Montant' => 20.0, 'Montant final' => 20.0, 'Statut' => 'Payé']],
+        ]);
+
+        $this->artisan('expense-claims:import-airtable', ['file' => $claims, '--employees' => $employees, '--org' => $this->org->id, '--commit' => true, '--book' => true])
+            ->assertSuccessful();
+
+        $unpaid = Claim::where('external_ref', 'recB1')->firstOrFail();
+        $this->assertSame(Claim::STATUS_APPROVED, $unpaid->status);
+        $this->assertNotNull($unpaid->journal_entry_id);
+        $this->assertSame(Claim::STATUS_SETTLED, Claim::where('external_ref', 'recB2')->value('status'));
+        $this->assertSame(1, JournalEntry::count()); // only the unpaid claim, at 70.00; no correction entry
+    }
+
+    #[Test]
+    public function debt_date_books_paid_claims_as_a_debt_record_per_person(): void
+    {
+        Person::create(['organization_id' => $this->org->id, 'name' => 'Alice', 'is_owner' => true]);
+        Place::create(['organization_id' => $this->org->id, 'kind' => 'hq', 'label' => 'Bureau']);
+        $employees = $this->file('emp', [['id' => 'recA', 'fields' => ['Employé' => 'Alice']]]);
+        $claims = $this->file('rep', [
+            ['id' => 'recD1', 'fields' => ['Date' => '2025-03-01', 'Qui' => ['recA'], 'Type' => 'Trajet', 'Titre' => 'X', 'Distance' => 100, 'Montant final' => 75.0, 'Statut' => 'Payé']],
+            ['id' => 'recD2', 'fields' => ['Date' => '2025-04-01', 'Qui' => ['recA'], 'Type' => 'Repas', 'Titre' => 'Y', 'Montant' => 20.0, 'Montant final' => 20.0, 'Statut' => 'Payé']],
+            ['id' => 'recD3', 'fields' => ['Date' => '2026-02-01', 'Qui' => ['recA'], 'Type' => 'Repas', 'Titre' => 'Z', 'Montant' => 30.0, 'Montant final' => 30.0, 'Statut' => 'A payer']],
+            // many small claims: the debt entry's line lists them all (description capped at 255)
+            ...array_map(fn (int $i): array => ['id' => "recM{$i}", 'fields' => ['Date' => '2025-06-01', 'Qui' => ['recA'], 'Type' => 'Autres', 'Titre' => 'M', 'Montant' => 1.0, 'Montant final' => 1.0, 'Statut' => 'Payé']], range(1, 40)),
+        ]);
+        $args = ['file' => $claims, '--employees' => $employees, '--org' => $this->org->id, '--commit' => true];
+
+        $this->artisan('expense-claims:import-airtable', $args + ['--debt-date' => '2025-12-31'])->assertFailed();
+        $this->artisan('expense-claims:import-airtable', $args + ['--book' => true, '--debt-date' => '2025-12-31'])->assertSuccessful();
+
+        $this->assertSame(Claim::STATUS_DEBT, Claim::where('external_ref', 'recD1')->value('status'));
+        $this->assertSame(Claim::STATUS_DEBT, Claim::where('external_ref', 'recD2')->value('status'));
+        $this->assertSame(Claim::STATUS_APPROVED, Claim::where('external_ref', 'recD3')->value('status'));
+        $debt = DebtRecord::sole();
+        $this->assertSame('130.00', (string) $debt->amount); // 100 km × 0.70 + 20 + 40 × 1, not Airtable's 135
+        $this->assertSame('2025-12-31', $debt->date->toDateString());
+        $this->assertSame(44, JournalEntry::count()); // 43 approvals + 1 transfer to the debt account
     }
 }

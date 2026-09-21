@@ -15,6 +15,8 @@ use Plugins\ExpenseClaims\Models\Person;
 use Plugins\ExpenseClaims\Models\Place;
 use Plugins\ExpenseClaims\Models\Setting;
 use Plugins\ExpenseClaims\Services\Accounts;
+use Plugins\ExpenseClaims\Services\Claims;
+use Plugins\ExpenseClaims\Services\Debts;
 use Plugins\ExpenseClaims\Services\Rates;
 
 /**
@@ -28,6 +30,9 @@ use Plugins\ExpenseClaims\Services\Rates;
  *   km amount always recomputed at the rate valid on the trip date
  *   (2025: 0.70, 2026: 0.75); Repas → meal, Autres → other;
  * - "A payer" → approved (no new journal entry), "Payé" → settled (migrated);
+ *   with --book --debt-date=DATE, "Payé" claims up to DATE were not paid but
+ *   recorded as a debt: they are booked and grouped per person into a debt
+ *   record on DATE;
  * - the difference between Airtable's "Montant final" and the recomputed
  *   total of unpaid claims is reported per person and, with
  *   --post-adjustment=DATE (required when there is a difference), posted per
@@ -42,11 +47,13 @@ class ImportAirtableCommand extends Command
         {--org= : Organisation id}
         {--commit : Write the claims (default: dry run)}
         {--post-adjustment= : Post the per-person correction on this date (e.g. 2025-12-31)}
+        {--book : Book unpaid claims like an approval (Dr expense / Cr liability, claim date) at the recomputed amounts; for a ledger that does not hold them yet. Replaces --post-adjustment}
+        {--debt-date= : With --book: Payé claims dated on or before this date were recorded as a debt in Airtable, not paid; book them and group them per person into a debt record on this date}
         {--report= : Write the detailed table to this file and print only totals (keeps personal data off the console)}';
 
     protected $description = 'Import Airtable expense claims (Représentation) into the expense-claims plugin';
 
-    public function handle(Rates $rates, Accounts $accounts, LedgerService $ledger): int
+    public function handle(Rates $rates, Accounts $accounts, LedgerService $ledger, Claims $claims, Debts $debts): int
     {
         $orgId = (string) $this->option('org');
         $records = $this->records((string) $this->argument('file'));
@@ -134,15 +141,32 @@ class ImportAirtableCommand extends Command
             return self::FAILURE;
         }
         $date = (string) $this->option('post-adjustment');
+        $book = (bool) $this->option('book');
+        if ($book && $date !== '') {
+            $this->error('--book and --post-adjustment exclude each other.');
+
+            return self::FAILURE;
+        }
+        $debtDate = (string) $this->option('debt-date');
+        if ($debtDate !== '' && (! $book || preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $debtDate, $d) !== 1 || ! checkdate((int) $d[2], (int) $d[3], (int) $d[1]))) {
+            $this->error('--debt-date needs --book and a date YYYY-MM-DD.');
+
+            return self::FAILURE;
+        }
+        // Payé up to the debt date: recorded as a debt in Airtable, not paid.
+        foreach ($plan as $i => $p) {
+            $plan[$i]['debt'] = $debtDate !== '' && $p['paid'] && $p['date'] <= $debtDate;
+            $plan[$i]['paid'] = $p['paid'] && ! $plan[$i]['debt'];
+        }
         $needsAdjustment = collect($adjustments)->contains(fn (string $a): bool => ! Money::isZero($a));
-        if ($needsAdjustment && $date === '') {
+        if ($needsAdjustment && $date === '' && ! $book) {
             // The difference is computed from this run only; importing without it would lose it.
             $this->error('Airtable and Gäld amounts differ: add --post-adjustment=DATE (e.g. 2025-12-31).');
 
             return self::FAILURE;
         }
 
-        DB::transaction(function () use ($plan, $orgId, $settings, $adjustments, $people, $accounts, $ledger, $date): void {
+        DB::transaction(function () use ($plan, $orgId, $settings, $adjustments, $people, $accounts, $ledger, $date, $book, $claims, $debts, $debtDate): void {
             $number = (int) Claim::withoutGlobalScopes()->where('organization_id', $orgId)->max('number');
             foreach ($plan as $p) {
                 $f = $p['record']['fields'];
@@ -157,7 +181,7 @@ class ImportAirtableCommand extends Command
                         isset($f['No pièce']) ? "Airtable n° {$f['No pièce']}" : null,
                         $f['Notes'] ?? null,
                     ]))),
-                    'status' => $p['paid'] ? Claim::STATUS_SETTLED : Claim::STATUS_APPROVED,
+                    'status' => $p['paid'] ? Claim::STATUS_SETTLED : ($book ? Claim::STATUS_DRAFT : Claim::STATUS_APPROVED),
                     'settled_via' => $p['paid'] ? 'migrated' : null,
                     'total' => $p['total'],
                     'liability_account_code' => $liability,
@@ -168,6 +192,17 @@ class ImportAirtableCommand extends Command
                     unset($line['to_label']);
                     ClaimLine::query()->create($line + ['claim_id' => $claim->id, 'position' => $position]);
                 }
+                if ($book && ! $p['paid']) {
+                    $claims->approve($claim);
+                }
+            }
+
+            if ($book) {
+                foreach (collect($plan)->where('debt', true)->pluck('person')->unique('id') as $person) {
+                    $debts->convert($person, $debtDate, 'Airtable : frais comptabilisés en dette');
+                }
+
+                return;
             }
 
             foreach ($adjustments as $personId => $amount) {
