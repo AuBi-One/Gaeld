@@ -3,6 +3,7 @@
 namespace Plugins\ExpenseClaims\Models;
 
 use App\Domains\Payroll\Models\Employee;
+use App\Domains\Users\Models\User;
 use App\Support\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int|null $contact_id
  * @property bool $is_owner
  * @property string|null $home_place_id
+ * @property int|null $user_id
  */
 class Person extends Model
 {
@@ -23,7 +25,7 @@ class Person extends Model
 
     protected $table = 'ec_people';
 
-    protected $fillable = ['organization_id', 'name', 'employee_id', 'contact_id', 'is_owner', 'home_place_id'];
+    protected $fillable = ['organization_id', 'name', 'employee_id', 'contact_id', 'is_owner', 'home_place_id', 'user_id'];
 
     protected function casts(): array
     {
@@ -34,6 +36,12 @@ class Person extends Model
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class);
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     /** @return BelongsTo<Place, $this> */

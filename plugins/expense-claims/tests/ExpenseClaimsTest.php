@@ -305,4 +305,34 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
         $this->assertSame(['expense-claims.unpaid'], array_column($findings, 'key')); // old draft not reported
         $this->assertStringContainsString('12.00', $findings[0]['message']);
     }
+
+    #[Test]
+    public function people_come_from_employees_or_members_and_the_form_defaults_to_the_current_user(): void
+    {
+        $this->actAsOrg()->post('/settings/expense-claims/people', ['user_id' => $this->user->id, 'is_owner' => true])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->actAsOrg()->post('/settings/expense-claims/people', ['employee_id' => $this->employee->id])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->actAsOrg()->post('/settings/expense-claims/people', [])->assertSessionHasErrors(['user_id', 'employee_id']);
+
+        $member = Person::where('user_id', $this->user->id)->firstOrFail();
+        $this->assertSame($this->user->name, $member->name);
+        $this->assertSame('Anna Muster', Person::where('employee_id', $this->employee->id)->value('name'));
+
+        $this->actAsOrg()->get('/expense-claims/create')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('defaultPersonId', $member->id));
+    }
+
+    #[Test]
+    public function a_home_place_can_be_created_for_a_person(): void
+    {
+        $person = $this->person();
+        $this->actAsOrg()->post('/settings/expense-claims/places', [
+            'kind' => 'home', 'label' => 'Domicile Anna', 'address' => 'Rue 1', 'postal_code' => '1000', 'city' => 'Lausanne',
+            'person_id' => $person->id,
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame(Place::where('label', 'Domicile Anna')->value('id'), $person->fresh()->home_place_id);
+    }
 }

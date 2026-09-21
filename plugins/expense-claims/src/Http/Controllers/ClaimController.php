@@ -215,10 +215,41 @@ class ClaimController extends PluginController
         return [
             'claim' => $claim ? $this->present($claim) : null,
             'people' => Person::query()->orderBy('name')->get(['id', 'name', 'home_place_id']),
+            'defaultPersonId' => $this->currentPersonId(),
             'places' => Place::query()->ordered()->get(['id', 'kind', 'label', 'city', 'lat', 'lon']),
             'rates' => $this->rates()->get(['vehicle_type', 'valid_from', 'valid_to', 'rate_per_km']),
             'routingEnabled' => $this->distances->isConfigured(),
         ];
+    }
+
+    /**
+     * The person record of the logged-in user: linked to their account,
+     * through their employee record, or an employee with their e-mail address.
+     */
+    private function currentPersonId(): ?string
+    {
+        $user = request()->user();
+        if ($user === null) {
+            return null;
+        }
+
+        $linked = Person::query()->where('user_id', $user->id)->value('id');
+        if ($linked !== null) {
+            return $linked;
+        }
+
+        // Fallbacks only among people not linked to another account, and only when unambiguous.
+        foreach ([
+            fn ($q) => $q->where('user_id', $user->id),
+            fn ($q) => $q->whereRaw('lower(email) = ?', [mb_strtolower((string) $user->email)]),
+        ] as $employeeMatch) {
+            $ids = Person::query()->whereNull('user_id')->whereHas('employee', $employeeMatch)->limit(2)->pluck('id');
+            if ($ids->count() === 1) {
+                return (string) $ids->first();
+            }
+        }
+
+        return null;
     }
 
     /**

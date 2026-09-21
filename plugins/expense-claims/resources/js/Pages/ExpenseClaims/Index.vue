@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { router } from '@inertiajs/vue3'
+import { Link, router } from '@inertiajs/vue3'
 import AppLayout from '@/Components/AppLayout.vue'
 import Button from '@/Components/UI/Button.vue'
 import DataTable from '@/Components/UI/DataTable.vue'
@@ -41,12 +41,12 @@ const tableFilters = computed(() => [
 ])
 
 const columns = computed(() => [
-  { key: 'reference', label: t('ec_reference'), minWidth: 90 },
-  { key: 'date', label: t('date'), minWidth: 110 },
+  { key: 'reference', label: t('ec_reference'), class: 'font-mono text-sm', minWidth: 90 },
+  { key: 'date', label: t('date'), format: value => formatDate(value), minWidth: 110 },
   { key: 'person', label: t('ec_person'), minWidth: 140 },
   { key: 'title', label: t('ec_title'), minWidth: 220 },
   { key: 'status', label: t('status'), minWidth: 130 },
-  { key: 'total', label: t('ec_total'), class: 'text-right whitespace-nowrap', minWidth: 120 },
+  { key: 'total', label: t('ec_total'), class: 'text-right whitespace-nowrap font-mono', format: value => formatCurrency(value), minWidth: 120 },
 ])
 
 function applyFilter({ key, value }) {
@@ -82,15 +82,12 @@ function applyFilter({ key, value }) {
       :row-link="row => `/expense-claims/${row.id}`"
       @filter="applyFilter"
     >
-      <template #cell-reference="{ row }">
-        <span class="font-mono text-sm">{{ row.reference }}</span>
-      </template>
-      <template #cell-date="{ row }">{{ formatDate(row.date) }}</template>
-      <template #cell-status="{ row }">
-        <Badge :variant="statusVariant[row.status] ?? 'secondary'">{{ t(`ec_status_${row.status}`) }}</Badge>
-      </template>
-      <template #cell-total="{ row }">
-        <span class="font-mono">{{ formatCurrency(row.total) }}</span>
+      <!-- Other cells use the DataTable default (a link to the row); the badge needs its own
+           link, except in the mobile card, which is already one link -->
+      <template #cell-status="{ row, inLink }">
+        <component :is="inLink ? 'span' : Link" v-bind="inLink ? {} : { href: `/expense-claims/${row.id}` }" class="block">
+          <Badge :variant="statusVariant[row.status] ?? 'secondary'">{{ t(`ec_status_${row.status}`) }}</Badge>
+        </component>
       </template>
       <template #empty>
         <EmptyState

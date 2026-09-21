@@ -25,6 +25,7 @@ const props = defineProps({
   places: { type: Array, default: () => [] },
   people: { type: Array, default: () => [] },
   employees: { type: Array, default: () => [] },
+  members: { type: Array, default: () => [] },
   contacts: { type: Array, default: () => [] },
   organization: { type: Object, default: null },
   routing: { type: Object, default: () => ({}) },
@@ -45,12 +46,22 @@ const kinds = ['hq', 'home', 'client', 'other']
 const kindOptions = computed(() => kinds.map(k => ({ value: k, label: t(`ec_kind_${k}`) })))
 const placeOpen = ref(false)
 const editingPlace = ref(null)
-const placeForm = useForm({ kind: 'client', label: '', address: '', postal_code: '', city: '', country: 'CH', lat: null, lon: null, contact_id: null })
+const placeForm = useForm({ kind: 'client', label: '', address: '', postal_code: '', city: '', country: 'CH', lat: null, lon: null, contact_id: null, person_id: null })
 const searchQuery = ref('')
 const searchResults = ref([])
 const searching = ref(false)
 const contactOptions = computed(() => props.contacts.map(c => ({ value: String(c.id), label: c.name })))
 const selectedContact = ref('')
+const peopleOptions = computed(() => [{ value: '', label: '—' }, ...props.people.map(p => ({ value: p.id, label: p.name }))])
+const selectedPerson = ref('')
+
+function personChosen(id) {
+  const person = props.people.find(p => p.id === id)
+  placeForm.person_id = person?.id ?? null
+  if (!person) return
+  placeForm.kind = 'home'
+  placeForm.label = `${t('ec_kind_home')} ${person.name}`
+}
 
 function openPlace(place = null) {
   editingPlace.value = place
@@ -61,6 +72,9 @@ function openPlace(place = null) {
   searchQuery.value = place ? [place.address, place.postal_code, place.city].filter(Boolean).join(' ') : ''
   searchResults.value = []
   selectedContact.value = place?.contact_id ? String(place.contact_id) : ''
+  const owner = place ? props.people.find(p => p.home_place_id === place.id) : null
+  selectedPerson.value = owner?.id ?? ''
+  placeForm.person_id = owner?.id ?? null
   placeOpen.value = true
 }
 
@@ -120,26 +134,23 @@ const deletePlace = place => router.delete(`/settings/expense-claims/places/${pl
 // ── People ──
 const personOpen = ref(false)
 const editingPerson = ref(null)
-const personForm = useForm({ name: '', employee_id: null, is_owner: false, home_place_id: null })
+const personForm = useForm({ employee_id: '', user_id: '', is_owner: false, home_place_id: '' })
 const employeeOptions = computed(() => [{ value: '', label: t('ec_not_employee') }, ...props.employees.map(e => ({ value: e.id, label: `${e.first_name} ${e.last_name}` }))])
+const memberOptions = computed(() => [{ value: '', label: t('ec_not_member') }, ...props.members.map(m => ({ value: String(m.id), label: m.name }))])
 const homeOptions = computed(() => [{ value: '', label: '—' }, ...props.places.filter(p => p.kind === 'home').map(p => ({ value: p.id, label: p.label }))])
 
 function openPerson(person = null) {
   editingPerson.value = person
   personForm.clearErrors()
   Object.assign(personForm, person
-    ? { name: person.name, employee_id: person.employee_id ?? '', is_owner: person.is_owner, home_place_id: person.home_place_id ?? '' }
-    : { name: '', employee_id: '', is_owner: false, home_place_id: '' })
+    ? { employee_id: person.employee_id ?? '', user_id: person.user_id ? String(person.user_id) : '', is_owner: person.is_owner, home_place_id: person.home_place_id ?? '' }
+    : { employee_id: '', user_id: '', is_owner: false, home_place_id: '' })
   personOpen.value = true
 }
 
-function employeeChosen(id) {
-  const employee = props.employees.find(e => e.id === id)
-  if (employee && !personForm.name) personForm.name = `${employee.first_name} ${employee.last_name}`
-}
 
 function savePerson() {
-  personForm.transform(data => ({ ...data, employee_id: data.employee_id || null, home_place_id: data.home_place_id || null }))
+  personForm.transform(data => ({ ...data, employee_id: data.employee_id || null, user_id: data.user_id ? Number(data.user_id) : null, home_place_id: data.home_place_id || null }))
   const options = { preserveScroll: true, onSuccess: () => { personOpen.value = false } }
   if (editingPerson.value) personForm.put(`/settings/expense-claims/people/${editingPerson.value.id}`, options)
   else personForm.post('/settings/expense-claims/people', options)
@@ -180,7 +191,10 @@ const placeLabel = id => props.places.find(p => p.id === id)?.label ?? ''
                   {{ person.name }}
                   <Badge v-if="person.is_owner" variant="outline" class="ml-2">{{ t('ec_owner') }}</Badge>
                 </td>
-                <td class="px-4 py-2">{{ person.employee ? `${person.employee.first_name} ${person.employee.last_name}` : t('ec_not_employee') }}</td>
+                <td class="px-4 py-2">
+                  <Badge v-if="person.employee_id" variant="secondary" class="mr-1">{{ t('ec_employee') }}</Badge>
+                  <Badge v-if="person.user_id" variant="secondary">{{ t('ec_member') }}</Badge>
+                </td>
                 <td class="px-4 py-2">{{ placeLabel(person.home_place_id) }}</td>
                 <td class="whitespace-nowrap px-4 py-2 text-right">
                   <Button size="icon" variant="ghost" :title="t('edit')" @click="openPerson(person)"><Pencil class="h-4 w-4" /></Button>
@@ -315,6 +329,7 @@ const placeLabel = id => props.places.find(p => p.id === id)?.label ?? ''
         </div>
         <div class="flex flex-wrap items-end gap-2">
           <FormSelect v-if="contacts.length" v-model="selectedContact" id="ec-selectedContact" :label="t('ec_from_contact')" :options="contactOptions" :placeholder="t('ec_from_contact')" class="min-w-[14rem] flex-1" @update:model-value="contactChosen" />
+          <FormSelect v-if="people.length" v-model="selectedPerson" id="ec-selectedPerson" :label="t('ec_home_of')" :options="peopleOptions" :placeholder="t('ec_home_of')" class="min-w-[14rem] flex-1" @update:model-value="personChosen" />
           <Button v-if="organization" type="button" variant="outline" size="sm" @click="fillFrom(organization, 'hq')">{{ t('ec_from_organization') }}</Button>
         </div>
         <div class="flex items-end gap-2">
@@ -351,8 +366,9 @@ const placeLabel = id => props.places.find(p => p.id === id)?.label ?? ''
     <!-- Person modal -->
     <Modal :open="personOpen" :title="editingPerson ? t('ec_edit_person') : t('ec_add_person')" @close="personOpen = false">
       <form class="space-y-4" @submit.prevent="savePerson">
-        <FormSelect v-model="personForm.employee_id" id="ec-personForm-employee-id" :label="t('ec_employee')" :options="employeeOptions" :error="personForm.errors.employee_id" @update:model-value="employeeChosen" />
-        <FormInput v-model="personForm.name" id="ec-personForm-name" :label="t('name')" :error="personForm.errors.name" required />
+        <p class="text-xs text-[hsl(var(--muted-foreground))]">{{ t('ec_person_source_hint') }}</p>
+        <FormSelect v-model="personForm.employee_id" id="ec-personForm-employee-id" :label="t('ec_employee')" :options="employeeOptions" :error="personForm.errors.employee_id" />
+        <FormSelect v-model="personForm.user_id" id="ec-personForm-user-id" :label="t('ec_member')" :options="memberOptions" :error="personForm.errors.user_id" />
         <FormSelect v-model="personForm.home_place_id" id="ec-personForm-home-place-id" :label="t('ec_home_place')" :options="homeOptions" :error="personForm.errors.home_place_id" />
         <label class="flex items-center gap-2 text-sm">
           <input v-model="personForm.is_owner" type="checkbox" class="h-4 w-4 accent-[hsl(var(--primary))]" />

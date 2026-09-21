@@ -24,6 +24,7 @@ const props = defineProps({
   places: { type: Array, default: () => [] },
   rates: { type: Array, default: () => [] },
   routingEnabled: { type: Boolean, default: false },
+  defaultPersonId: { type: String, default: null },
 })
 
 const lineTypes = ['km', 'meal', 'accommodation', 'transport', 'other']
@@ -45,7 +46,7 @@ function newLine(type = 'km') {
 }
 
 const form = useForm({
-  person_id: props.claim?.person_id ?? (props.people.length === 1 ? props.people[0].id : ''),
+  person_id: props.claim?.person_id ?? props.defaultPersonId ?? (props.people.length === 1 ? props.people[0].id : ''),
   date: props.claim?.date ?? new Date().toISOString().slice(0, 10),
   title: props.claim?.title ?? '',
   notes: props.claim?.notes ?? '',

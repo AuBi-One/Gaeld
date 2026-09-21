@@ -41,7 +41,8 @@ class ImportAirtableCommand extends Command
         {--employees= : Employé JSON export (to resolve "Qui")}
         {--org= : Organisation id}
         {--commit : Write the claims (default: dry run)}
-        {--post-adjustment= : Post the per-person correction on this date (e.g. 2025-12-31)}';
+        {--post-adjustment= : Post the per-person correction on this date (e.g. 2025-12-31)}
+        {--report= : Write the detailed table to this file and print only totals (keeps personal data off the console)}';
 
     protected $description = 'Import Airtable expense claims (Représentation) into the expense-claims plugin';
 
@@ -86,11 +87,21 @@ class ImportAirtableCommand extends Command
             $plan[] = compact('record', 'person', 'date', 'lines', 'total', 'paid', 'airtableTotal');
         }
 
-        $this->table(['Date', 'Person', 'Title', 'Airtable', 'Gäld', 'Status', 'To'], array_map(fn (array $p): array => [
+        $rows = array_map(fn (array $p): array => [
             $p['date'], $p['person']->name, mb_strimwidth((string) ($p['record']['fields']['Titre'] ?? ''), 0, 40, '…'),
             $p['airtableTotal'], $p['total'], $p['paid'] ? 'paid' : 'unpaid',
             implode(', ', array_filter(array_map(fn (array $l) => $l['to_label'] ?? null, $p['lines']))),
-        ], $plan));
+        ], $plan);
+        $report = (string) $this->option('report');
+        if ($report === '') {
+            $this->table(['Date', 'Person', 'Title', 'Airtable', 'Gäld', 'Status', 'To'], $rows);
+        } else {
+            $out = ['| Date | Person | Title | Airtable | Gäld | Status | To |', '|---|---|---|---:|---:|---|---|'];
+            foreach ($rows as $r) {
+                $out[] = '| '.implode(' | ', array_map(fn ($v) => str_replace('|', '/', (string) $v), $r)).' |';
+            }
+            file_put_contents($report, implode("\n", $out)."\n");
+        }
 
         $adjustments = [];
         foreach ($plan as $p) {
@@ -100,10 +111,14 @@ class ImportAirtableCommand extends Command
             }
         }
         foreach ($adjustments as $personId => $amount) {
-            $this->line(sprintf('Unpaid difference Airtable − Gäld, %s: CHF %s', $people->firstWhere('id', $personId)?->name, $amount));
+            $line = sprintf('Unpaid difference Airtable − Gäld, %s: CHF %s', $people->firstWhere('id', $personId)?->name, $amount);
+            $report === '' ? $this->line($line) : file_put_contents($report, "\n- {$line}", FILE_APPEND);
         }
         foreach ($problems as $problem) {
-            $this->warn($problem);
+            $report === '' ? $this->warn($problem) : file_put_contents($report, "\n- PROBLEM: {$problem}", FILE_APPEND);
+        }
+        if ($report !== '' && $problems !== []) {
+            $this->warn(count($problems).' problem(s), see '.$report);
         }
 
         if (! $this->option('commit')) {
@@ -112,7 +127,7 @@ class ImportAirtableCommand extends Command
             return $problems === [] ? self::SUCCESS : self::FAILURE;
         }
         if ($problems !== []) {
-            $this->error('Fix the problems above first.');
+            $this->error('Fix the problems first (listed above, or in the --report file).');
 
             return self::FAILURE;
         }

@@ -5,6 +5,7 @@ namespace Plugins\ExpenseClaims\Http\Controllers;
 use App\Domains\Contacts\Models\Contact;
 use App\Domains\Organizations\Models\Organization;
 use App\Domains\Payroll\Models\Employee;
+use App\Domains\Users\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -33,7 +34,8 @@ class SettingsController extends PluginController
             'settings' => Setting::forOrganization($this->orgId())->only(array_keys(Setting::DEFAULTS)),
             'rates' => VehicleRate::query()->orderBy('vehicle_type')->orderByDesc('valid_from')->get(),
             'places' => Place::query()->ordered()->get(),
-            'people' => Person::query()->with('employee:id,first_name,last_name')->orderBy('name')->get(),
+            'people' => Person::query()->with(['employee:id,first_name,last_name', 'user:id,name'])->orderBy('name')->get(),
+            'members' => Organization::query()->findOrFail($this->orgId())->users()->orderBy('name')->get(['users.id', 'users.name']),
             'employees' => Employee::query()->orderBy('last_name')->get(['id', 'first_name', 'last_name']),
             'contacts' => Contact::query()->orderBy('name')->limit(500)->get(['id', 'name', 'address', 'postal_code', 'city', 'country']),
             'organization' => Organization::query()->find($this->orgId(), ['name', 'address', 'postal_code', 'city', 'country']),
@@ -76,7 +78,9 @@ class SettingsController extends PluginController
     public function storePlace(Request $request): RedirectResponse
     {
         $this->authorizeWrite();
-        Place::query()->create($this->placeData($request) + ['organization_id' => $this->orgId()]);
+        $data = $this->placeData($request);
+        $place = Place::query()->create(array_diff_key($data, ['person_id' => true]) + ['organization_id' => $this->orgId()]);
+        $this->linkHome($place, $data['person_id'] ?? null);
 
         return back()->with('success', __('expense-claims::ec.saved'));
     }
@@ -84,11 +88,13 @@ class SettingsController extends PluginController
     public function updatePlace(Request $request, Place $place): RedirectResponse
     {
         $this->authorizeWrite();
-        $place->fill($this->placeData($request));
+        $data = $this->placeData($request);
+        $place->fill(array_diff_key($data, ['person_id' => true]));
         if ($place->isDirty(['lat', 'lon'])) {
             $this->distances->forget($place);
         }
         $place->save();
+        $this->linkHome($place, $data['person_id'] ?? null);
 
         return back()->with('success', __('expense-claims::ec.saved'));
     }
@@ -156,7 +162,16 @@ class SettingsController extends PluginController
             'lat' => ['nullable', 'numeric', 'between:-90,90'],
             'lon' => ['nullable', 'numeric', 'between:-180,180'],
             'contact_id' => ['nullable', 'integer', Rule::exists('contacts', 'id')->where('organization_id', $this->orgId())],
+            'person_id' => ['nullable', 'uuid', 'prohibited_unless:kind,home', Rule::exists('ec_people', 'id')->where('organization_id', $this->orgId())],
         ]);
+    }
+
+    /** A home place chosen for a person becomes that person's home. */
+    private function linkHome(Place $place, ?string $personId): void
+    {
+        if ($personId !== null) {
+            Person::query()->whereKey($personId)->update(['home_place_id' => $place->id]);
+        }
     }
 
     /**
@@ -164,15 +179,27 @@ class SettingsController extends PluginController
      */
     private function personData(Request $request, ?Person $person = null): array
     {
-        return $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+        $data = $request->validate([
+            'user_id' => [
+                'nullable', 'integer', 'required_without:employee_id',
+                Rule::exists('organization_users', 'user_id')->where('organization_id', $this->orgId()),
+                Rule::unique('ec_people', 'user_id')->where('organization_id', $this->orgId())->ignore($person?->id),
+            ],
             'employee_id' => [
-                'nullable', 'uuid',
+                'nullable', 'uuid', 'required_without:user_id',
                 Rule::exists('employees', 'id')->where('organization_id', $this->orgId()),
                 Rule::unique('ec_people', 'employee_id')->where('organization_id', $this->orgId())->ignore($person?->id),
             ],
             'is_owner' => ['boolean'],
             'home_place_id' => ['nullable', 'uuid', Rule::exists('ec_places', 'id')->where('organization_id', $this->orgId())],
         ]);
+
+        // The name comes from the employee record, else from the member's account.
+        $employee = isset($data['employee_id']) ? Employee::query()->whereKey($data['employee_id'])->first() : null;
+        $data['name'] = $employee !== null
+            ? $employee->fullName()
+            : (string) User::query()->whereKey($data['user_id'])->value('name');
+
+        return $data;
     }
 }
