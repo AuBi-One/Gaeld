@@ -87,4 +87,18 @@ class ImportAirtableTest extends ExpenseClaimsTestCase
         $this->assertSame('10.00', number_format((float) $entry->lines->firstWhere('account.code', '6640')->debit, 2, '.', ''));
         $this->assertSame('10.00', number_format((float) $entry->lines->firstWhere('account.code', '2210')->credit, 2, '.', ''));
     }
+
+    #[Test]
+    public function qui_can_be_airtable_collaborators_instead_of_employee_links(): void
+    {
+        Person::create(['organization_id' => $this->org->id, 'name' => 'Alice', 'is_owner' => false]);
+        Place::create(['organization_id' => $this->org->id, 'kind' => 'hq', 'label' => 'Bureau']);
+        $claims = $this->file('rep', [
+            ['id' => 'recC', 'fields' => ['Date' => '2026-02-01', 'Qui' => [['id' => 'usr1', 'email' => 'alice@example.com', 'name' => 'Alice']], 'Type' => 'Repas', 'Titre' => 'R', 'Montant' => 30.0, 'Montant final' => 30.0, 'Statut' => 'A payer']],
+        ]);
+
+        $this->artisan('expense-claims:import-airtable', ['file' => $claims, '--org' => $this->org->id, '--commit' => true])->assertSuccessful();
+
+        $this->assertSame('Alice', Claim::with('person')->firstOrFail()->person->name);
+    }
 }

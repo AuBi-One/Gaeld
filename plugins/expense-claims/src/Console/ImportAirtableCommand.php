@@ -37,7 +37,7 @@ use Plugins\ExpenseClaims\Services\Rates;
 class ImportAirtableCommand extends Command
 {
     protected $signature = 'expense-claims:import-airtable
-        {file : Représentation JSON export}
+        {file : Représentation JSON export ("Qui" as Employé links or as collaborators)}
         {--employees= : Employé JSON export (to resolve "Qui")}
         {--org= : Organisation id}
         {--commit : Write the claims (default: dry run)}
@@ -69,9 +69,11 @@ class ImportAirtableCommand extends Command
             if (isset($done[$record['id']])) {
                 continue;
             }
-            $who = array_values(array_filter(array_map(fn ($id) => $people[mb_strtolower($names[$id] ?? '')] ?? null, (array) ($f['Qui'] ?? []))));
-            if ($who === [] || count($who) !== count((array) ($f['Qui'] ?? []))) {
-                $problems[] = "{$record['id']}: person not found (".implode(', ', array_map(fn ($id) => $names[$id] ?? $id, (array) ($f['Qui'] ?? []))).')';
+            // "Qui" is either links to Employé (record ids) or Airtable collaborators ({id, email, name}).
+            $qui = array_map(fn ($q): string => is_array($q) ? (string) ($q['name'] ?? $q['email'] ?? '') : (string) ($names[$q] ?? $q), (array) ($f['Qui'] ?? []));
+            $who = array_values(array_filter(array_map(fn (string $name) => $people[mb_strtolower(trim($name))] ?? null, $qui)));
+            if ($who === [] || count($who) !== count($qui)) {
+                $problems[] = "{$record['id']}: person not found (".implode(', ', $qui).')';
 
                 continue;
             }
