@@ -8,8 +8,9 @@
 - Why: several people work on this fork with AI assistants; the commit author must show
   which person did the work.
 - Use the GitHub no-reply address, never a private email.
-- On the shared dev VM `gald-dev` (`/srv/gaeld`), the repo identity is set to David; anyone
-  else sets their own per commit: `git -c user.name=… -c user.email=… commit …`.
+- On the shared dev VM `gald-dev` (`/srv/gaeld`), no identity is stored and
+  `user.useConfigOnly=true`: every commit passes the person's own identity,
+  `git -c user.name=… -c user.email=… commit …`.
 
 ## Branches
 
