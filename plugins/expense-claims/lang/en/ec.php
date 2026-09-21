@@ -3,6 +3,7 @@
 return [
     'nav_claims' => 'Expense claims',
     'nav_balances' => 'Expense balances',
+    'nav_settings_short' => 'Settings',
     'nav_settings' => 'Expense claims',
     'title_claims' => 'Expense claims',
     'intro_claims' => 'Trips, meals and other business expenses, booked when approved and reimbursed with the salary, by bank or through a debt record.',

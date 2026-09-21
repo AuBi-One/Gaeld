@@ -32,18 +32,18 @@ const repaying = ref(null)
 const repayForm = useForm({ date: new Date().toISOString().slice(0, 10), amount: '' })
 
 function changeDate() {
-  router.get('/payroll/expense-balances', { date: asOf.value }, { preserveState: true, replace: true })
+  router.get('/expense-balances', { date: asOf.value }, { preserveState: true, replace: true })
 }
 
 function convert() {
-  router.post(`/payroll/expense-balances/people/${converting.value.id}/convert`, { date: props.date }, {
+  router.post(`/expense-balances/people/${converting.value.id}/convert`, { date: props.date }, {
     preserveScroll: true,
     onFinish: () => { converting.value = null },
   })
 }
 
 function cancelDebt() {
-  router.delete(`/payroll/expense-balances/debts/${cancelling.value.id}`, {
+  router.delete(`/expense-balances/debts/${cancelling.value.id}`, {
     preserveScroll: true,
     onFinish: () => { cancelling.value = null },
   })
@@ -55,7 +55,7 @@ function openRepay(debt) {
 }
 
 function repay() {
-  repayForm.post(`/payroll/expense-balances/debts/${repaying.value.id}/repay`, {
+  repayForm.post(`/expense-balances/debts/${repaying.value.id}/repay`, {
     preserveScroll: true,
     onSuccess: () => { repaying.value = null },
   })
@@ -63,7 +63,7 @@ function repay() {
 </script>
 
 <template>
-  <AppLayout :title="t('ec_nav_balances')" help-page="payroll">
+  <AppLayout :title="t('ec_nav_balances')" help-page="expenses">
     <p class="mb-6 max-w-3xl text-sm text-[hsl(var(--muted-foreground))]">{{ t('ec_balances_intro') }}</p>
 
     <div class="space-y-6">
@@ -91,7 +91,7 @@ function repay() {
             <tbody>
               <tr v-for="person in people" :key="person.id" class="border-t border-[hsl(var(--border))]">
                 <td class="px-4 py-2">
-                  <a :href="`/payroll/expense-claims?person_id=${person.id}`" class="hover:underline">{{ person.name }}</a>
+                  <a :href="`/expense-claims?person_id=${person.id}`" class="hover:underline">{{ person.name }}</a>
                   <Badge v-if="person.is_owner" variant="outline" class="ml-2">{{ t('ec_owner') }}</Badge>
                 </td>
                 <td class="px-4 py-2 text-right font-mono">{{ formatCurrency(person.open_total) }} <span class="text-xs text-[hsl(var(--muted-foreground))]">({{ person.open_count }})</span></td>

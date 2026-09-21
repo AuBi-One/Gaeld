@@ -17,12 +17,12 @@ abstract class PluginController extends Controller
 
     protected function authorizeView(): void
     {
-        abort_unless($this->allows(Permission::PayrollView), 403);
+        abort_unless($this->allows(Permission::ExpensesView), 403);
     }
 
     protected function authorizeWrite(): void
     {
-        abort_unless($this->allows(Permission::PayrollEdit), 403);
+        abort_unless($this->allows(Permission::ExpensesApprove), 403);
     }
 
     protected function allows(Permission $permission): bool
@@ -44,7 +44,7 @@ abstract class PluginController extends Controller
 
         return Inertia::render($component, $props + [
             'translations' => array_merge((array) trans('app'), $plugin),
-            'canManage' => $this->allows(Permission::PayrollEdit),
+            'canManage' => $this->allows(Permission::ExpensesApprove),
         ]);
     }
 }

@@ -72,7 +72,7 @@ class ClaimController extends PluginController
         $this->authorizeWrite();
         $claim = $this->claims->saveDraft($this->orgId(), $this->validated($request));
 
-        return redirect("/payroll/expense-claims/{$claim->id}")->with('success', __('expense-claims::ec.saved'));
+        return redirect("/expense-claims/{$claim->id}")->with('success', __('expense-claims::ec.saved'));
     }
 
     public function show(Claim $claim): Response
@@ -92,7 +92,7 @@ class ClaimController extends PluginController
     {
         $this->authorizeWrite();
         if (! $claim->isDraft()) {
-            return redirect("/payroll/expense-claims/{$claim->id}")->with('error', __('expense-claims::ec.only_draft_editable'));
+            return redirect("/expense-claims/{$claim->id}")->with('error', __('expense-claims::ec.only_draft_editable'));
         }
 
         return $this->page('ExpenseClaims/Form', $this->formProps($claim->load('lines')));
@@ -103,7 +103,7 @@ class ClaimController extends PluginController
         $this->authorizeWrite();
         $this->claims->saveDraft($this->orgId(), $this->validated($request), $claim);
 
-        return redirect("/payroll/expense-claims/{$claim->id}")->with('success', __('expense-claims::ec.saved'));
+        return redirect("/expense-claims/{$claim->id}")->with('success', __('expense-claims::ec.saved'));
     }
 
     public function destroy(Claim $claim): RedirectResponse
@@ -113,7 +113,7 @@ class ClaimController extends PluginController
             Storage::disk('local')->delete($file['path']);
         }
 
-        return redirect('/payroll/expense-claims')->with('success', __('expense-claims::ec.deleted'));
+        return redirect('/expense-claims')->with('success', __('expense-claims::ec.deleted'));
     }
 
     public function approve(Claim $claim): RedirectResponse

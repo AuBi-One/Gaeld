@@ -9,7 +9,7 @@ import EmptyState from '@/Components/UI/EmptyState.vue'
 import StatCard from '@/Components/UI/StatCard.vue'
 import { useTranslations } from '@/lib/useTranslations'
 import { useFormatters } from '@/lib/useFormatters'
-import { Plus, Receipt } from 'lucide-vue-next'
+import { Plus, Receipt, Settings } from 'lucide-vue-next'
 
 const { t } = useTranslations()
 const { formatCurrency, formatDate } = useFormatters()
@@ -50,18 +50,24 @@ const columns = computed(() => [
 ])
 
 function applyFilter({ key, value }) {
-  router.get('/payroll/expense-claims', { ...props.filters, [key]: value || undefined }, { preserveState: true, replace: true })
+  router.get('/expense-claims', { ...props.filters, [key]: value || undefined }, { preserveState: true, replace: true })
 }
 </script>
 
 <template>
-  <AppLayout :title="t('ec_title_claims')" help-page="payroll">
+  <AppLayout :title="t('ec_title_claims')" help-page="expenses">
     <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <p class="max-w-2xl text-sm text-[hsl(var(--muted-foreground))]">{{ t('ec_intro_claims') }}</p>
-      <Button v-if="canManage" as="a" href="/payroll/expense-claims/create">
-        <Plus class="mr-2 h-4 w-4" />
-        {{ t('ec_new_claim') }}
-      </Button>
+      <div v-if="canManage" class="flex gap-2">
+        <Button as="a" href="/settings/expense-claims" variant="outline">
+          <Settings class="mr-2 h-4 w-4" />
+          {{ t('ec_nav_settings_short') }}
+        </Button>
+        <Button as="a" href="/expense-claims/create">
+          <Plus class="mr-2 h-4 w-4" />
+          {{ t('ec_new_claim') }}
+        </Button>
+      </div>
     </div>
 
     <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -73,7 +79,7 @@ function applyFilter({ key, value }) {
       :rows="claims?.data ?? []"
       :pagination="claims"
       :filters="tableFilters"
-      :row-link="row => `/payroll/expense-claims/${row.id}`"
+      :row-link="row => `/expense-claims/${row.id}`"
       @filter="applyFilter"
     >
       <template #cell-reference="{ row }">
@@ -92,7 +98,7 @@ function applyFilter({ key, value }) {
           :title="t('ec_no_claims')"
           :description="t('ec_no_claims_desc')"
           :action-label="canManage ? t('ec_new_claim') : ''"
-          :action-href="canManage ? '/payroll/expense-claims/create' : ''"
+          :action-href="canManage ? '/expense-claims/create' : ''"
         />
       </template>
     </DataTable>

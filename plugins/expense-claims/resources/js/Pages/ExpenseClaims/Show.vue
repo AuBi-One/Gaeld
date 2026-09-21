@@ -34,21 +34,21 @@ const fileInput = ref(null)
 
 function act(action) {
   busy.value = true
-  router.post(`/payroll/expense-claims/${props.claim.id}/${action}`, {}, { preserveScroll: true, onFinish: () => { busy.value = false } })
+  router.post(`/expense-claims/${props.claim.id}/${action}`, {}, { preserveScroll: true, onFinish: () => { busy.value = false } })
 }
 
 function destroy() {
-  router.delete(`/payroll/expense-claims/${props.claim.id}`, { onFinish: () => { confirmDelete.value = false } })
+  router.delete(`/expense-claims/${props.claim.id}`, { onFinish: () => { confirmDelete.value = false } })
 }
 
 function pay() {
-  payForm.post(`/payroll/expense-claims/${props.claim.id}/pay-bank`, { preserveScroll: true, onSuccess: () => { payOpen.value = false } })
+  payForm.post(`/expense-claims/${props.claim.id}/pay-bank`, { preserveScroll: true, onSuccess: () => { payOpen.value = false } })
 }
 
 function upload(event) {
   const file = event.target.files?.[0]
   if (!file) return
-  router.post(`/payroll/expense-claims/${props.claim.id}/attachments`, { file }, { forceFormData: true, preserveScroll: true })
+  router.post(`/expense-claims/${props.claim.id}/attachments`, { file }, { forceFormData: true, preserveScroll: true })
   event.target.value = ''
 }
 
@@ -60,11 +60,11 @@ function lineLabel(line) {
 </script>
 
 <template>
-  <AppLayout :title="`${t('ec_title_claims')} ${claim.reference}`" help-page="payroll">
+  <AppLayout :title="`${t('ec_title_claims')} ${claim.reference}`" help-page="expenses">
     <Breadcrumb
       :items="[
-        { label: t('payroll'), href: '/payroll/employees' },
-        { label: t('ec_title_claims'), href: '/payroll/expense-claims' },
+        { label: t('expenses'), href: '/expenses' },
+        { label: t('ec_title_claims'), href: '/expense-claims' },
         { label: claim.reference },
       ]"
       class="mb-4"
@@ -94,7 +94,7 @@ function lineLabel(line) {
         <CardContent v-if="canManage" class="flex flex-wrap gap-2">
           <template v-if="claim.status === 'draft'">
             <Button :loading="busy" @click="act('approve')"><Check class="mr-2 h-4 w-4" />{{ t('ec_approve') }}</Button>
-            <Button as="a" :href="`/payroll/expense-claims/${claim.id}/edit`" variant="outline"><Pencil class="mr-2 h-4 w-4" />{{ t('edit') }}</Button>
+            <Button as="a" :href="`/expense-claims/${claim.id}/edit`" variant="outline"><Pencil class="mr-2 h-4 w-4" />{{ t('edit') }}</Button>
             <Button variant="ghost" @click="confirmDelete = true"><Trash2 class="mr-2 h-4 w-4" />{{ t('delete') }}</Button>
           </template>
           <template v-else-if="claim.status === 'approved'">
@@ -152,7 +152,7 @@ function lineLabel(line) {
             <a
               v-for="file in claim.attachments"
               :key="file.index"
-              :href="`/payroll/expense-claims/${claim.id}/attachments/${file.index}`"
+              :href="`/expense-claims/${claim.id}/attachments/${file.index}`"
               class="flex items-center gap-2 text-sm text-[hsl(var(--primary))] hover:underline"
             >
               <Paperclip class="h-4 w-4" />{{ file.name }}

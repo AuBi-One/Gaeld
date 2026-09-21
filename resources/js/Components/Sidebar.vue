@@ -90,9 +90,13 @@ function withPluginNavigation(items) {
   const pluginItems = (page.props.pluginNavigation ?? []).filter(entry => !entry.permission || can(entry.permission))
   if (!pluginItems.length) return items
 
+  // An entry goes to the first of its parent groups that is shown with children.
+  const groups = new Set(items.filter(item => item.children).map(item => item.key))
+  const target = entry => (entry.parents ?? [entry.parent]).find(key => groups.has(key))
+
   return items.map(item => {
     const extra = pluginItems
-      .filter(entry => entry.parent === item.key && item.children)
+      .filter(entry => target(entry) === item.key)
       .map(entry => ({ key: entry.key, href: entry.href, text: entry.text }))
 
     return extra.length ? { ...item, children: [...item.children, ...extra] } : item

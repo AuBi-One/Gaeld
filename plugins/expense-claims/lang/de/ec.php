@@ -3,6 +3,7 @@
 return [
     'nav_claims' => 'Spesenabrechnungen',
     'nav_balances' => 'Spesensalden',
+    'nav_settings_short' => 'Einstellungen',
     'nav_settings' => 'Spesenabrechnungen',
     'title_claims' => 'Spesenabrechnungen',
     'intro_claims' => 'Fahrten, Mahlzeiten und andere Geschäftsspesen, bei der Genehmigung verbucht und mit dem Lohn, per Bank oder über eine Schuld zurückerstattet.',

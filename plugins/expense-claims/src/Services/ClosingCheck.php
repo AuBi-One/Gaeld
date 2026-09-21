@@ -30,7 +30,7 @@ final class ClosingCheck implements ClosingCheckInterface
                 'key' => 'expense-claims.drafts',
                 'message' => __('expense-claims::ec.closing_drafts', ['count' => $drafts->count()]),
                 'action_label' => __('expense-claims::ec.open_claims'),
-                'action_url' => '/payroll/expense-claims?status=draft',
+                'action_url' => '/expense-claims?status=draft',
             ];
         }
 
@@ -43,7 +43,7 @@ final class ClosingCheck implements ClosingCheckInterface
                     'amount' => Money::sumAmounts($unpaid->map(fn (Claim $c): array => ['amount' => (string) $c->total])->values()->all()),
                 ]),
                 'action_label' => __('expense-claims::ec.convert_to_debt'),
-                'action_url' => '/payroll/expense-balances?date='.$toDate,
+                'action_url' => '/expense-balances?date='.$toDate,
             ];
         }
 

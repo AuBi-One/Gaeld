@@ -10,8 +10,8 @@ towards the person.
 
 | Where | What |
 |---|---|
-| Payroll › Expense claims | list, create/edit drafts, approve (books Dr 6640 · Cr 2210/2260), pay by bank, receipts |
-| Payroll › Expense balances | unpaid claims and debts per person; convert to a debt record at a closing date; repay a debt by bank |
+| Expenses › Expense claims | list, create/edit drafts, approve (books Dr 6640 · Cr 2210/2260), pay by bank, receipts |
+| Expenses › Expense balances | unpaid claims and debts per person; convert to a debt record at a closing date; repay a debt by bank |
 | Organisation settings › Expense claims | people (employee link, owner/organ flag, home), places (office, homes, clients) with federal geocoding, km rates, accounts |
 | Payroll › Run payroll | each employee's approved claims and open debts, ticked by default, paid with the salary from their own liability account |
 | Accounting › Year-end closing | step 2 warns about draft and unpaid claims of the year |
@@ -19,6 +19,9 @@ towards the person.
 Accounting follows the Swiss SME chart (Banana): 6640 travel expenses; 2210 owed to
 staff; 2260/2560 owed to owners and organs, short/long term (CO 959a). All codes are
 settings; a missing account is created, an existing one is never renamed.
+
+Access: viewing needs `expenses.view`; creating, approving, paying and settings need
+`expenses.approve` (the ledger is written at approval).
 
 ## Configuration (.env)
 

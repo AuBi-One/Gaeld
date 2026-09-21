@@ -226,7 +226,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
 
         $this->assertSame(['expense-claims.drafts', 'expense-claims.unpaid'], array_column($findings, 'key'));
         $this->assertStringContainsString('30.00', $findings[1]['message']);
-        $this->assertSame('/payroll/expense-balances?date=2025-12-31', $findings[1]['action_url']);
+        $this->assertSame('/expense-balances?date=2025-12-31', $findings[1]['action_url']);
     }
 
     #[Test]
@@ -234,7 +234,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
     {
         $person = $this->person();
 
-        $this->actAsOrg()->post('/payroll/expense-claims', [
+        $this->actAsOrg()->post('/expense-claims', [
             'person_id' => $person->id,
             'date' => '2026-04-02',
             'title' => 'Séance de travail',
@@ -247,10 +247,10 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
         $claim = Claim::firstOrFail();
         $this->assertSame('59.50', (string) $claim->total); // 42 × 0.75 = 31.50 + 28
 
-        $this->actAsOrg()->post("/payroll/expense-claims/{$claim->id}/approve")->assertRedirect();
+        $this->actAsOrg()->post("/expense-claims/{$claim->id}/approve")->assertRedirect();
         $this->assertSame(Claim::STATUS_APPROVED, $claim->fresh()->status);
 
-        $this->actAsOrg()->get('/payroll/expense-claims')
+        $this->actAsOrg()->get('/expense-claims')
             ->assertOk()
             ->assertInertia(fn ($page) => $page->component('ExpenseClaims/Index', false)
                 ->where('openCount', 1)
@@ -260,7 +260,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page->where("reimbursementItems.{$this->employee->id}.0.id", 'claim:'.$claim->id));
 
-        $this->assertContains('/payroll/expense-claims', array_column(app(PluginNavigation::class)->toArray(), 'href'));
+        $this->assertContains(['expenses', '/expense-claims'], array_map(fn ($i) => [$i['parent'], $i['href']], app(PluginNavigation::class)->toArray()));
     }
 
     #[Test]
@@ -275,7 +275,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
         $this->app->forgetScopedInstances(); // as in a fresh request: the org comes from the session
 
         $this->actingAs($this->user)->withSession(['current_organization_id' => $other->id])
-            ->get("/payroll/expense-claims/{$claim->id}")
+            ->get("/expense-claims/{$claim->id}")
             ->assertNotFound();
     }
 

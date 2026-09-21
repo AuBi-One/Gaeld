@@ -150,7 +150,7 @@ const placeLabel = id => props.places.find(p => p.id === id)?.label ?? ''
 </script>
 
 <template>
-  <AppLayout :title="t('ec_settings_title')" help-page="payroll">
+  <AppLayout :title="t('ec_settings_title')" help-page="expenses">
     <div class="max-w-5xl space-y-6">
       <!-- People -->
       <Card>

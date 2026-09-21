@@ -28,8 +28,8 @@ class ExpenseClaimsServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(__DIR__.'/../migrations');
 
         $navigation = $this->app->make(PluginNavigation::class);
-        $navigation->add('payroll', 'expense_claims', 'expense-claims::ec.nav_claims', '/payroll/expense-claims', 'payroll.view');
-        $navigation->add('payroll', 'expense_balances', 'expense-claims::ec.nav_balances', '/payroll/expense-balances', 'payroll.view');
-        $navigation->add('organization_settings_nav', 'expense_settings', 'expense-claims::ec.nav_settings', '/settings/expense-claims', 'payroll.edit');
+        $navigation->add(['expenses', 'payroll'], 'expense_claims', 'expense-claims::ec.nav_claims', '/expense-claims', 'expenses.view');
+        $navigation->add(['expenses', 'payroll'], 'expense_balances', 'expense-claims::ec.nav_balances', '/expense-balances', 'expenses.view');
+        $navigation->add('organization_settings_nav', 'expense_settings', 'expense-claims::ec.nav_settings', '/settings/expense-claims', 'expenses.approve');
     }
 }

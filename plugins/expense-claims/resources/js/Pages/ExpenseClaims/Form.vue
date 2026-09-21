@@ -98,7 +98,7 @@ async function lookUp(index) {
   lookingUp.value = { ...lookingUp.value, [index]: true }
   try {
     const query = new URLSearchParams({ from: line.from_place_id, to: line.to_place_id })
-    const response = await fetch(`/payroll/expense-claims/distance?${query}`, { headers: { Accept: 'application/json' } })
+    const response = await fetch(`/expense-claims/distance?${query}`, { headers: { Accept: 'application/json' } })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) {
       lookupError.value = { ...lookupError.value, [index]: data.message || t('ec_distance_lookup_failed') }
@@ -137,9 +137,9 @@ function submit() {
       : { type: line.type, description: line.description || null, amount: line.amount }),
   }))
   if (props.claim) {
-    form.put(`/payroll/expense-claims/${props.claim.id}`)
+    form.put(`/expense-claims/${props.claim.id}`)
   } else {
-    form.post('/payroll/expense-claims')
+    form.post('/expense-claims')
   }
 }
 
@@ -147,11 +147,11 @@ const lineError = (index, field) => form.errors[`lines.${index}.${field}`]
 </script>
 
 <template>
-  <AppLayout :title="claim ? t('ec_edit_claim') : t('ec_new_claim')" help-page="payroll">
+  <AppLayout :title="claim ? t('ec_edit_claim') : t('ec_new_claim')" help-page="expenses">
     <Breadcrumb
       :items="[
-        { label: t('payroll'), href: '/payroll/employees' },
-        { label: t('ec_title_claims'), href: '/payroll/expense-claims' },
+        { label: t('expenses'), href: '/expenses' },
+        { label: t('ec_title_claims'), href: '/expense-claims' },
         { label: claim ? claim.reference : t('ec_new_claim') },
       ]"
       class="mb-4"
@@ -255,7 +255,7 @@ const lineError = (index, field) => form.errors[`lines.${index}.${field}`]
       </Card>
 
       <div class="flex justify-end gap-2">
-        <Button as="a" :href="claim ? `/payroll/expense-claims/${claim.id}` : '/payroll/expense-claims'" variant="outline">{{ t('cancel') }}</Button>
+        <Button as="a" :href="claim ? `/expense-claims/${claim.id}` : '/expense-claims'" variant="outline">{{ t('cancel') }}</Button>
         <Button type="submit" :loading="form.processing">{{ t('ec_save_draft') }}</Button>
       </div>
     </form>

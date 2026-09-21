@@ -3,6 +3,7 @@
 return [
     'nav_claims' => 'Notes de frais',
     'nav_balances' => 'Soldes des frais',
+    'nav_settings_short' => 'Paramètres',
     'nav_settings' => 'Notes de frais',
     'title_claims' => 'Notes de frais',
     'intro_claims' => 'Déplacements, repas et autres frais professionnels, comptabilisés à l\'approbation et remboursés avec le salaire, par la banque ou via une dette.',

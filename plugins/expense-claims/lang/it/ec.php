@@ -3,6 +3,7 @@
 return [
     'nav_claims' => 'Note spese',
     'nav_balances' => 'Saldi spese',
+    'nav_settings_short' => 'Impostazioni',
     'nav_settings' => 'Note spese',
     'title_claims' => 'Note spese',
     'intro_claims' => 'Trasferte, pasti e altre spese professionali, contabilizzate all\'approvazione e rimborsate con lo stipendio, via banca o tramite un debito.',

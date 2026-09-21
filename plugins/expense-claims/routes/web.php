@@ -5,8 +5,8 @@ use Plugins\ExpenseClaims\Http\Controllers\BalanceController;
 use Plugins\ExpenseClaims\Http\Controllers\ClaimController;
 use Plugins\ExpenseClaims\Http\Controllers\SettingsController;
 
-Route::middleware(['web', 'auth', 'verified', 'org', 'org-2fa', 'subscription', 'feature:payroll'])->group(function (): void {
-    Route::prefix('payroll/expense-claims')->name('expense-claims.')->group(function (): void {
+Route::middleware(['web', 'auth', 'verified', 'org', 'org-2fa', 'subscription'])->group(function (): void {
+    Route::prefix('expense-claims')->name('expense-claims.')->group(function (): void {
         Route::get('/', [ClaimController::class, 'index'])->name('index');
         Route::get('/create', [ClaimController::class, 'create'])->name('create');
         Route::post('/', [ClaimController::class, 'store'])->name('store');
@@ -23,7 +23,7 @@ Route::middleware(['web', 'auth', 'verified', 'org', 'org-2fa', 'subscription', 
         Route::get('/{claim}/attachments/{index}', [ClaimController::class, 'attachment'])->whereUuid('claim')->whereNumber('index')->name('attachment');
     });
 
-    Route::prefix('payroll/expense-balances')->name('expense-balances.')->group(function (): void {
+    Route::prefix('expense-balances')->name('expense-balances.')->group(function (): void {
         Route::get('/', [BalanceController::class, 'index'])->name('index');
         Route::post('/people/{person}/convert', [BalanceController::class, 'convert'])->whereUuid('person')->name('convert');
         Route::delete('/debts/{debt}', [BalanceController::class, 'cancel'])->whereUuid('debt')->name('cancel');
