@@ -2,8 +2,10 @@
 
 namespace App\Domains\Payroll\Actions;
 
+use App\Domains\Payroll\Contracts\ReimbursementSourceInterface;
 use App\Domains\Payroll\Models\Employee;
 use App\Domains\Payroll\Models\SalarySlip;
+use App\Domains\Payroll\Services\NullReimbursementSource;
 use App\Domains\Payroll\Services\PayrollCalculator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -17,11 +19,12 @@ class GeneratePayrollRunAction
     public function __construct(
         private PayrollCalculator $calculator,
         private PostPayrollAction $postAction,
+        private ReimbursementSourceInterface $reimbursements = new NullReimbursementSource,
     ) {}
 
     /**
      * @param  array<int, string>  $employeeIds  Optional subset of employee UUIDs to process. Empty array = all active employees.
-     * @param  array<int, array{employee_id: string, unpaid_leave_days?: int|string, reimbursement_amount?: string|int|float}>  $adjustments
+     * @param  array<int, array{employee_id: string, unpaid_leave_days?: int|string, reimbursement_amount?: string|int|float, reimbursement_item_ids?: array<int, string>}>  $adjustments
      * @return Collection<int, SalarySlip>
      */
     public function execute(string $orgId, int $month, int $year, bool $shouldPost = false, array $employeeIds = [], array $adjustments = []): Collection
@@ -48,6 +51,7 @@ class GeneratePayrollRunAction
                     $year,
                     (int) ($adjustment['unpaid_leave_days'] ?? 0),
                     (string) ($adjustment['reimbursement_amount'] ?? '0.00'),
+                    $this->resolveItems($employee, $adjustment),
                 );
                 $slip->save();
 
@@ -68,7 +72,7 @@ class GeneratePayrollRunAction
      * Calculate a payroll preview without persisting salary slips.
      *
      * @param  array<int, string>  $employeeIds
-     * @param  array<int, array{employee_id: string, unpaid_leave_days?: int|string, reimbursement_amount?: string|int|float}>  $adjustments
+     * @param  array<int, array{employee_id: string, unpaid_leave_days?: int|string, reimbursement_amount?: string|int|float, reimbursement_item_ids?: array<int, string>}>  $adjustments
      * @return Collection<int, SalarySlip>
      */
     public function preview(string $orgId, int $month, int $year, array $employeeIds = [], array $adjustments = []): Collection
@@ -85,9 +89,23 @@ class GeneratePayrollRunAction
                     $year,
                     (int) ($adjustment['unpaid_leave_days'] ?? 0),
                     (string) ($adjustment['reimbursement_amount'] ?? '0.00'),
+                    $this->resolveItems($employee, $adjustment),
                 );
             })
             ->values();
+    }
+
+    /**
+     * @param  array<string, mixed>  $adjustment
+     * @return list<array{id: string, date: string, label: string, amount: string, account_code: string}>
+     */
+    private function resolveItems(Employee $employee, array $adjustment): array
+    {
+        $ids = array_values(array_map('strval', (array) ($adjustment['reimbursement_item_ids'] ?? [])));
+
+        return $ids === []
+            ? []
+            : $this->reimbursements->resolve((string) $employee->organization_id, (string) $employee->id, $ids);
     }
 
     /**

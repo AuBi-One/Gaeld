@@ -15,13 +15,19 @@ import ClosedYearBanner from '@/Components/UI/ClosedYearBanner.vue'
 import { Check, ChevronRight } from 'lucide-vue-next'
 
 const { t } = useTranslations()
-const { intlMonthName, formatCurrency } = useFormatters()
+const { intlMonthName, formatCurrency, formatDate } = useFormatters()
 
 const props = defineProps({
   employees: { type: Array, default: () => [] },
   fiscalYears: { type: Array, default: () => [] },
   withholdingTaxEnabled: { type: Boolean, default: false },
+  // { [employeeId]: [{ id, date, label, amount }] } from the reimbursement source
+  reimbursementItems: { type: Object, default: () => ({}) },
 })
+
+function itemsFor(employeeId) {
+  return props.reimbursementItems?.[employeeId] ?? []
+}
 
 // Step state: 1=Select, 2=Preview, 3=Generate, 4=Post
 const step = ref(1)
@@ -30,8 +36,24 @@ const adjustments = ref(Object.fromEntries(
   props.employees.map(employee => [employee.id, {
     unpaid_leave_days: 0,
     reimbursement_amount: '0.00',
+    // All open items are proposed; untick to leave a claim open.
+    reimbursement_item_ids: itemsFor(employee.id).map(item => item.id),
   }])
 ))
+
+function toggleItem(employeeId, itemId) {
+  const adjustment = adjustmentFor(employeeId)
+  adjustment.reimbursement_item_ids = adjustment.reimbursement_item_ids.includes(itemId)
+    ? adjustment.reimbursement_item_ids.filter(id => id !== itemId)
+    : [...adjustment.reimbursement_item_ids, itemId]
+}
+
+function selectedItemsTotal(employeeId) {
+  const selected = adjustmentFor(employeeId).reimbursement_item_ids
+  return itemsFor(employeeId)
+    .filter(item => selected.includes(item.id))
+    .reduce((sum, item) => sum + Number(item.amount), 0)
+}
 const month = ref(String(((new Date().getMonth() + 11) % 12) + 1))
 const year = ref(
   // Default to last month's year (handles January → previous year).
@@ -112,6 +134,7 @@ function adjustmentPayload() {
       employee_id: employeeId,
       unpaid_leave_days: Number(adjustment?.unpaid_leave_days) || 0,
       reimbursement_amount: adjustment?.reimbursement_amount || '0.00',
+      reimbursement_item_ids: adjustment?.reimbursement_item_ids ?? [],
     }
   })
 }
@@ -334,7 +357,7 @@ async function postSlips() {
               />
             </label>
             <label class="text-xs text-[hsl(var(--muted-foreground))]">
-              {{ t('reimbursement_amount') }}
+              {{ itemsFor(emp.id).length ? t('reimbursement_amount_other') : t('reimbursement_amount') }}
               <input
                 v-model="adjustmentFor(emp.id).reimbursement_amount"
                 type="number"
@@ -343,6 +366,28 @@ async function postSlips() {
                 class="mt-1 flex h-9 w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-2 text-sm text-[hsl(var(--foreground))]"
               />
             </label>
+            <div v-if="itemsFor(emp.id).length" class="space-y-2 sm:col-span-3">
+              <div class="flex items-baseline justify-between gap-3">
+                <p class="text-xs font-medium">{{ t('reimbursement_items') }}</p>
+                <p class="font-mono text-xs">{{ formatCurrency(selectedItemsTotal(emp.id)) }}</p>
+              </div>
+              <p class="text-xs text-[hsl(var(--muted-foreground))]">{{ t('reimbursement_items_desc') }}</p>
+              <label
+                v-for="item in itemsFor(emp.id)"
+                :key="item.id"
+                class="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-[hsl(var(--accent))]"
+              >
+                <input
+                  type="checkbox"
+                  :checked="adjustmentFor(emp.id).reimbursement_item_ids.includes(item.id)"
+                  class="h-4 w-4 accent-[hsl(var(--primary))]"
+                  @change="toggleItem(emp.id, item.id)"
+                />
+                <span class="w-24 shrink-0 text-xs text-[hsl(var(--muted-foreground))]">{{ formatDate(item.date) }}</span>
+                <span class="flex-1 truncate">{{ item.label }}</span>
+                <span class="font-mono">{{ formatCurrency(item.amount) }}</span>
+              </label>
+            </div>
           </div>
         </div>
 

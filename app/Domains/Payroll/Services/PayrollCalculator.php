@@ -28,6 +28,12 @@ class PayrollCalculator
     /**
      * Calculate salary for a given employee and period.
      * Handles pro-rata for partial months (entry/exit mid-month).
+     *
+     * $reimbursementAmount is the manual amount (booked on the general expense
+     * account); $reimbursementItems are items already resolved by the
+     * ReimbursementSourceInterface and are added to it.
+     *
+     * @param  list<array{id: string, date: string, label: string, amount: string, account_code: string}>  $reimbursementItems
      */
     public function calculate(
         Employee $employee,
@@ -35,6 +41,7 @@ class PayrollCalculator
         int $year,
         int $unpaidLeaveDays = 0,
         string $reimbursementAmount = '0.00',
+        array $reimbursementItems = [],
     ): SalarySlip {
         $period = Carbon::create($year, $month, 1);
         $baseSalary = $this->proRataGross($employee, $month, $year);
@@ -57,6 +64,9 @@ class PayrollCalculator
         }
 
         $reimbursementAmount = Money::normalize($reimbursementAmount);
+        foreach ($reimbursementItems as $item) {
+            $reimbursementAmount = Money::add($reimbursementAmount, $item['amount']);
+        }
         $grossSalary = Money::subtract(
             Money::add($baseSalary, $thirteenthSalary),
             $unpaidLeaveAmount,
@@ -88,6 +98,7 @@ class PayrollCalculator
                 'unpaid_leave_days' => $unpaidLeaveDays,
                 'unpaid_leave_amount' => $unpaidLeaveAmount,
                 'reimbursement_amount' => $reimbursementAmount,
+                ...($reimbursementItems !== [] ? ['reimbursement_items' => $reimbursementItems] : []),
             ],
             'employee_snapshot' => [
                 'first_name' => (string) $employee->first_name,

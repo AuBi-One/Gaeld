@@ -30,6 +30,8 @@ const props = defineProps({
   availableYears: { type: Array, default: () => [] },
   unsettledVatPeriods: { type: Array, default: () => [] },
   outstandingInvoices: { type: Array, default: () => [] },
+  // Non-blocking findings contributed by plugins: [{ key, message, action_label?, action_url? }]
+  closingChecks: { type: Array, default: () => [] },
 })
 
 const { t } = useTranslations()
@@ -265,6 +267,17 @@ function daysOverdueLabel(n) {
 
       <!-- Step 2: Outstanding invoices -->
       <div v-show="currentStep === 1" class="space-y-4">
+        <div
+          v-for="check in closingChecks"
+          :key="check.key"
+          class="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+        >
+          <AlertTriangle class="h-4 w-4 shrink-0" />
+          <span class="flex-1">{{ check.message }}</span>
+          <a v-if="check.action_url" :href="check.action_url" class="shrink-0 font-medium underline">
+            {{ check.action_label }}
+          </a>
+        </div>
         <div
           v-if="outstandingInvoices.length === 0"
           class="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800 dark:border-green-800 dark:bg-green-950/30 dark:text-green-200"

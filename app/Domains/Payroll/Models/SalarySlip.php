@@ -27,7 +27,7 @@ use Illuminate\Support\Facades\Crypt;
  * @property string $net_salary
  * @property string|null $journal_entry_id
  * @property array<string, mixed> $deductions
- * @property array{base_salary: string, thirteenth_salary: string, unpaid_leave_days: int, unpaid_leave_amount: string, reimbursement_amount: string}|null $adjustments
+ * @property array{base_salary: string, thirteenth_salary: string, unpaid_leave_days: int, unpaid_leave_amount: string, reimbursement_amount: string, reimbursement_items?: list<array{id: string, date: string, label: string, amount: string, account_code: string}>}|null $adjustments
  * @property array<string, mixed>|null $employee_snapshot
  * @property string|null $source_tax_base
  * @property string|null $source_tax_rate

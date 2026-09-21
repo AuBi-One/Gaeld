@@ -4,6 +4,7 @@ namespace App\Domains\Accounting\Controllers;
 
 use App\Domains\Accounting\Actions\ReopenFiscalYearAction;
 use App\Domains\Accounting\Actions\YearEndClosingAction;
+use App\Domains\Accounting\Contracts\ClosingCheckInterface;
 use App\Domains\Accounting\Models\Account;
 use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Accounting\Models\JournalEntry;
@@ -129,6 +130,9 @@ class YearEndClosingController extends Controller
             'canReopenYear' => $request->user()?->can('reopenYear', Account::class) ?? false,
             'unsettledVatPeriods' => $this->getUnsettledVatPeriods($from, $to),
             'outstandingInvoices' => $outstandingInvoices,
+            'closingChecks' => collect(app()->tagged(ClosingCheckInterface::TAG))
+                ->flatMap(fn (ClosingCheckInterface $check): array => $check->check($orgId, $from, $to))
+                ->values(),
         ]);
     }
 

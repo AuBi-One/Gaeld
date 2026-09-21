@@ -7,10 +7,13 @@ use App\Domains\Accounting\DTOs\JournalEntryData;
 use App\Domains\Accounting\DTOs\JournalLineData;
 use App\Domains\Accounting\Services\LedgerQueryService;
 use App\Domains\Accounting\Services\LedgerService;
+use App\Domains\Payroll\Contracts\ReimbursementSourceInterface;
 use App\Domains\Payroll\Contracts\SourceTaxServiceInterface;
 use App\Domains\Payroll\Models\SalarySlip;
+use App\Domains\Payroll\Services\NullReimbursementSource;
 use App\Support\Money;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Posts a salary slip to the accounting ledger (gross salary, deductions, net pay).
@@ -22,6 +25,7 @@ class PostPayrollAction
         private LedgerQueryService $ledgerQuery,
         private SendSalarySlipEmailAction $sendEmail,
         private SourceTaxServiceInterface $sourceTax,
+        private ReimbursementSourceInterface $reimbursements = new NullReimbursementSource,
     ) {}
 
     public function execute(SalarySlip $slip): SalarySlip
@@ -90,7 +94,20 @@ class PostPayrollAction
             description: "Net salary paid: {$employee->fullName()}",
         );
 
+        // Itemised reimbursements are re-checked against their source (still
+        // open, same amount) and debited to the account the source names;
+        // the manual remainder keeps the general expense account.
         $reimbursementAmount = (string) ($deductions['reimbursement_amount'] ?? '0.00');
+        $items = $this->currentReimbursementItems($slip);
+        foreach ($items as $item) {
+            $reimbursementAmount = Money::subtract($reimbursementAmount, $item['amount']);
+            $lines[] = new JournalLineData(
+                accountId: (string) $this->ledgerQuery->resolveAccount($orgId, $item['account_code'])->id,
+                debit: $item['amount'],
+                credit: '0',
+                description: "Expense reimbursement: {$employee->fullName()} — {$item['label']}",
+            );
+        }
         if (Money::isPositive($reimbursementAmount)) {
             $reimbursementAccount = $this->ledgerQuery->resolveAccount($orgId, AccountCode::GENERAL_EXPENSE);
             $lines[] = new JournalLineData(
@@ -158,17 +175,48 @@ class PostPayrollAction
             lines: $lines,
         );
 
-        $journalEntry = $this->ledger->postEntry($orgId, $entry);
+        DB::transaction(function () use ($orgId, $entry, $slip, $items): void {
+            $journalEntry = $this->ledger->postEntry($orgId, $entry);
 
-        $slip->update([
-            'journal_entry_id' => $journalEntry->id,
-            'posted_at' => now(),
-        ]);
+            $slip->update([
+                'journal_entry_id' => $journalEntry->id,
+                'posted_at' => now(),
+            ]);
+
+            if ($items !== []) {
+                $this->reimbursements->settle($slip, $items);
+            }
+        });
 
         $postedSlip = $slip->fresh();
         $this->sendEmail->execute($postedSlip);
 
         return $postedSlip;
+    }
+
+    /**
+     * @return list<array{id: string, date: string, label: string, amount: string, account_code: string}>
+     */
+    private function currentReimbursementItems(SalarySlip $slip): array
+    {
+        $stored = $slip->adjustments['reimbursement_items'] ?? [];
+        if ($stored === []) {
+            return [];
+        }
+
+        $current = $this->reimbursements->resolve(
+            (string) $slip->organization_id,
+            (string) $slip->employee_id,
+            array_map(fn (array $item): string => (string) $item['id'], $stored),
+        );
+
+        $storedTotal = array_reduce($stored, fn (string $sum, array $item): string => Money::add($sum, (string) $item['amount']), Money::zero());
+        $currentTotal = array_reduce($current, fn (string $sum, array $item): string => Money::add($sum, $item['amount']), Money::zero());
+        if (Money::compare($storedTotal, $currentTotal) !== 0) {
+            throw new \DomainException('Reimbursement items changed since the salary slip was generated. Delete and regenerate the slip.');
+        }
+
+        return $current;
     }
 
     private function ensureSourceTaxApplied(SalarySlip $slip): void

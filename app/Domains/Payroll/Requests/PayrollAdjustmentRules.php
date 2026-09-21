@@ -46,6 +46,8 @@ final class PayrollAdjustmentRules
             'adjustments.*.employee_id' => ['required', 'uuid'],
             'adjustments.*.unpaid_leave_days' => self::unpaidLeaveDays($request),
             'adjustments.*.reimbursement_amount' => ['nullable', 'numeric', 'decimal:0,2', 'min:0'],
+            'adjustments.*.reimbursement_item_ids' => ['nullable', 'array', 'max:200'],
+            'adjustments.*.reimbursement_item_ids.*' => ['string', 'max:64', 'distinct'],
         ];
     }
 }

@@ -44,8 +44,10 @@ use App\Domains\Organizations\Listeners\RevokeOrganizationTokens;
 use App\Domains\Organizations\Models\FiscalYearChangeRequest;
 use App\Domains\Organizations\Policies\FiscalYearChangeRequestPolicy;
 use App\Domains\Organizations\Services\CurrentOrganization;
+use App\Domains\Payroll\Contracts\ReimbursementSourceInterface;
 use App\Domains\Payroll\Contracts\SourceTaxServiceInterface;
 use App\Domains\Payroll\Models\SalarySlip;
+use App\Domains\Payroll\Services\NullReimbursementSource;
 use App\Domains\Payroll\Services\NullSourceTaxService;
 use App\Domains\Reporting\Jobs\GenerateReportsJob;
 use App\Domains\Users\Jobs\ExportUserDataJob;
@@ -57,6 +59,7 @@ use App\Support\EditionCompatibility as EditionCompatibilityService;
 use App\Support\EditionReleasePair;
 use App\Support\Listeners\AuthAuditSubscriber;
 use App\Support\Observers\LocksArchivedRecord;
+use App\Support\Plugins\PluginNavigation;
 use App\Support\Services\DefaultOrganizationQuotaResolver;
 use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -90,6 +93,8 @@ class AppServiceProvider extends ServiceProvider
         );
         $this->app->singleton(OrganizationQuotaResolver::class, DefaultOrganizationQuotaResolver::class);
         $this->app->singleton(SourceTaxServiceInterface::class, NullSourceTaxService::class);
+        $this->app->singleton(ReimbursementSourceInterface::class, NullReimbursementSource::class);
+        $this->app->singleton(PluginNavigation::class);
         $this->app->singleton(
             ReceiptOcrInterface::class,
             config('services.ocr.driver', 'tesseract') === 'tesseract'

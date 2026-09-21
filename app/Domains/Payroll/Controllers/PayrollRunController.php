@@ -4,6 +4,7 @@ namespace App\Domains\Payroll\Controllers;
 
 use App\Domains\Organizations\Services\CurrentOrganization;
 use App\Domains\Payroll\Actions\GeneratePayrollRunAction;
+use App\Domains\Payroll\Contracts\ReimbursementSourceInterface;
 use App\Domains\Payroll\Controllers\Concerns\EnsuresPayrollWritable;
 use App\Domains\Payroll\Models\Employee;
 use App\Domains\Payroll\Requests\PayrollAdjustmentRules;
@@ -25,7 +26,7 @@ class PayrollRunController extends Controller
 {
     use EnsuresPayrollWritable;
 
-    public function index(Request $request, CurrentOrganization $currentOrg): Response
+    public function index(Request $request, CurrentOrganization $currentOrg, ReimbursementSourceInterface $reimbursements): Response
     {
         $this->ensurePayrollWritable($currentOrg->get());
         $this->authorize('viewAny', Employee::class);
@@ -42,6 +43,12 @@ class PayrollRunController extends Controller
             'employees' => $employees,
             'fiscalYears' => $fiscalYears,
             'withholdingTaxEnabled' => FeatureFlag::enabledForOrg('withholding_tax', $currentOrg->get()),
+            'reimbursementItems' => $employees
+                ->mapWithKeys(fn (Employee $employee): array => [
+                    $employee->id => $reimbursements->openItems($currentOrg->id(), (string) $employee->id),
+                ])
+                ->filter()
+                ->all(),
         ]);
     }
 

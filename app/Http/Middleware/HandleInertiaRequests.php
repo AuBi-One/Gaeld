@@ -8,6 +8,7 @@ use App\Domains\Organizations\Services\CurrentOrganization;
 use App\Domains\Users\Models\User;
 use App\Support\Contracts\OrganizationQuotaResolver;
 use App\Support\FeatureFlag;
+use App\Support\Plugins\PluginNavigation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Auth;
@@ -40,6 +41,7 @@ class HandleInertiaRequests extends Middleware
             'translations' => fn () => trans('app'),
             'features' => fn () => $this->resolveFeatures(),
             'routeCapabilities' => fn () => $this->resolveRouteCapabilities(),
+            'pluginNavigation' => fn () => app(PluginNavigation::class)->toArray(),
             'docsBaseUrl' => config('docs.base_url'),
             'docsRoutes' => config('docs.routes', []),
             'flash' => [
