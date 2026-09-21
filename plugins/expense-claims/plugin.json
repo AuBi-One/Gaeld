@@ -1,0 +1,13 @@
+{
+    "name": "Expense Claims",
+    "slug": "expense-claims",
+    "version": "0.1.0",
+    "description": "Employee and owner expense claims: kilometric allowances, meals, accommodation; booking, reimbursement with payroll or by bank, and debt records at period end.",
+    "author": "AuBi-One",
+    "provider": "Plugins\\ExpenseClaims\\ExpenseClaimsServiceProvider",
+    "enabled": true,
+    "frontend": {
+        "pages": "resources/js/Pages/**/*.vue"
+    },
+    "requires": []
+}
