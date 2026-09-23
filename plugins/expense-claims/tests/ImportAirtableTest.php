@@ -150,11 +150,11 @@ class ImportAirtableTest extends ExpenseClaimsTestCase
         $debt = DebtRecord::sole();
         $this->assertSame('130.00', (string) $debt->amount); // 100 km × 0.70 + 20 + 40 × 1, not Airtable's 135
         $this->assertSame('2025-12-31', $debt->date->toDateString());
-        // Only the debt: one entry for the person on the debt date, Dr 6640 · Cr 2560 (D37, D38).
+        // Only the debt: one entry for the person on the debt date, Dr 6640 · Cr 2260 (D37, D38, D47).
         $this->assertSame(1, JournalEntry::count());
         $entry = JournalEntry::with('lines.account')->sole();
         $this->assertSame('2025-12-31', $entry->date->toDateString());
-        $this->assertSame(['2560' => '-130.00', '6640' => '130.00'], $entry->lines->mapWithKeys(fn ($l) => [$l->account->code => number_format((float) $l->debit - (float) $l->credit, 2, '.', '')])->sortKeys()->all());
+        $this->assertSame(['2260' => '-130.00', '6640' => '130.00'], $entry->lines->mapWithKeys(fn ($l) => [$l->account->code => number_format((float) $l->debit - (float) $l->credit, 2, '.', '')])->sortKeys()->all());
         $this->assertSame(0, JournalEntry::where('is_posted', false)->count());
     }
 

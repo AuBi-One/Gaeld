@@ -17,6 +17,7 @@ use PHPUnit\Framework\Attributes\Test;
 use Plugins\ExpenseClaims\Models\Claim;
 use Plugins\ExpenseClaims\Models\DebtRecord;
 use Plugins\ExpenseClaims\Models\Person;
+use Plugins\ExpenseClaims\Models\Setting;
 use Plugins\ExpenseClaims\Services\Accounts;
 use Plugins\ExpenseClaims\Services\Claims;
 use Plugins\ExpenseClaims\Services\Debts;
@@ -113,6 +114,8 @@ class GroupedEntriesTest extends ExpenseClaimsTestCase
     #[Test]
     public function passing_a_batch_to_debt_writes_one_entry_and_one_record_per_person(): void
     {
+        // Repayment deferred beyond 12 months by agreement: long-term debt account (D47).
+        Setting::forOrganization($this->org->id)->update(['owner_debt_code' => '2560']);
         $owner2 = Person::create(['organization_id' => $this->org->id, 'name' => 'Second owner', 'is_owner' => true]);
         $claims = [$this->draft($this->owner, '2025-05-10', '10.00'), $this->draft($owner2, '2025-06-10', '20.00'), $this->draft($this->anna, '2025-07-10', '5.00'), $this->draft($this->anna, '2025-08-10', '6.00')];
         app(Claims::class)->approve($claims);

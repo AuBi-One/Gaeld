@@ -34,8 +34,9 @@ class BalanceController extends PluginController
         $this->authorizeWrite(); // managers only (expenses.approve), not the viewer role (D39)
         $status = in_array($request->string('status')->toString(), [Claim::STATUS_DRAFT, Claim::STATUS_APPROVED], true) ? $request->string('status')->toString() : '';
         $personId = $request->string('person_id')->toString();
-        $to = $request->string('to')->toString();
-        $to = preg_match('/^\d{4}-\d{2}-\d{2}$/', $to) === 1 ? $to : '';
+        $date = fn (string $key): string => preg_match('/^\d{4}-\d{2}-\d{2}$/', $request->string($key)->toString()) === 1 ? $request->string($key)->toString() : '';
+        $from = $date('from');
+        $to = $date('to');
 
         $unpaid = Claim::query()->whereIn('status', [Claim::STATUS_DRAFT, Claim::STATUS_APPROVED])->get(['id', 'person_id', 'status', 'total']);
         $debts = DebtRecord::query()->with(['person:id,name', 'repayments'])->orderByDesc('date')->get();
@@ -44,6 +45,7 @@ class BalanceController extends PluginController
             ->with('person:id,name')
             ->whereIn('status', $status !== '' ? [$status] : [Claim::STATUS_DRAFT, Claim::STATUS_APPROVED])
             ->when($personId !== '', fn ($q) => $q->where('person_id', $personId))
+            ->when($from !== '', fn ($q) => $q->whereDate('date', '>=', $from))
             ->when($to !== '', fn ($q) => $q->whereDate('date', '<=', $to))
             ->orderBy('date')
             ->orderBy('number')
@@ -60,7 +62,7 @@ class BalanceController extends PluginController
         ])->values();
 
         return $this->page('ExpenseClaims/Balances', [
-            'filters' => ['status' => $status, 'person_id' => $personId, 'to' => $to],
+            'filters' => ['status' => $status, 'person_id' => $personId, 'from' => $from, 'to' => $to],
             'claims' => $claims->take(self::LIMIT)->map(fn (Claim $c): array => [
                 'id' => $c->id,
                 'reference' => $c->reference(),

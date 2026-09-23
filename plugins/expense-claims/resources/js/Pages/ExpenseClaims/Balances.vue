@@ -38,7 +38,7 @@ const statusVariant = { draft: 'secondary', approved: 'warning' }
 const today = new Date().toISOString().slice(0, 10)
 
 // ── filters ──
-const filterForm = ref({ status: props.filters.status || '', person_id: props.filters.person_id || '', to: props.filters.to || '' })
+const filterForm = ref({ status: props.filters.status || '', person_id: props.filters.person_id || '', from: props.filters.from || '', to: props.filters.to || '' })
 function applyFilters() {
   const query = Object.fromEntries(Object.entries(filterForm.value).filter(([, v]) => v))
   router.get('/expense-balances', query, { preserveState: true, preserveScroll: true, replace: true })
@@ -159,9 +159,10 @@ function debtState(debt) {
       <Card>
         <CardHeader>
           <CardTitle>{{ t('ec_open_claims') }}</CardTitle>
-          <form class="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end" @submit.prevent="applyFilters">
+          <form class="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_1fr_1fr_auto] sm:items-end" @submit.prevent="applyFilters">
             <FormSelect v-model="filterForm.status" id="ec-filter-status" :label="t('status')" :options="statusOptions" />
             <FormSelect v-model="filterForm.person_id" id="ec-filter-person" :label="t('ec_person')" :options="personOptions" />
+            <FormInput v-model="filterForm.from" id="ec-filter-from" type="date" :label="t('ec_dated_from')" />
             <FormInput v-model="filterForm.to" id="ec-filter-to" type="date" :label="t('ec_dated_up_to')" />
             <Button type="submit" variant="outline">{{ t('apply') }}</Button>
           </form>

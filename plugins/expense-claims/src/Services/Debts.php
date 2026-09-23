@@ -30,7 +30,7 @@ final class Debts
      * Pass approved claims dated on or before $date to debt: per person one
      * debt record and one entry dated $date (D37, D38): Dr the cost (expense
      * account per line, or the liability of a claim booked earlier) · Cr the
-     * person's debt account (2560 owners, 2210 staff). A claim booked earlier
+     * person's debt account (setting: 2260 owners, 2210 staff). A claim booked earlier
      * on the debt account itself gives no line.
      *
      * @param  Claim|iterable<Claim>  $claims

@@ -4,6 +4,7 @@ namespace Plugins\ExpenseClaims\Tests;
 
 require_once __DIR__.'/ExpenseClaimsTestCase.php';
 
+use App\Domains\Accounting\Actions\YearEndClosingAction;
 use App\Domains\Accounting\Models\Account;
 use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Models\TransactionLine;
@@ -166,7 +167,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
     }
 
     #[Test]
-    public function period_end_conversion_moves_owner_claims_to_the_long_term_debt_and_can_be_repaid(): void
+    public function period_end_conversion_moves_owner_claims_to_the_owner_debt_account_and_can_be_repaid(): void
     {
         $owner = $this->person(owner: true, employee: false);
         $this->claim($owner, '2025-11-10', [['type' => 'km', 'km' => '100']]); // 2025 → 0.70
@@ -175,15 +176,15 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
         $debt = $this->convert($owner, '2025-12-31');
 
         $this->assertSame('70.00', (string) $debt->amount);
-        $this->assertSame('2560', $debt->account_code);
+        $this->assertSame('2260', $debt->account_code);
         $balances = $this->balances();
         $this->assertSame('70.00', $balances['6640']);   // cost booked on the debt date; the 2026 claim is not booked yet
-        $this->assertSame('-70.00', $balances['2560']);
+        $this->assertSame('-70.00', $balances['2260']);
         $this->assertTrue(JournalEntry::where('reference', 'like', 'EC-DEBT-20251231%')->whereDate('date', '2025-12-31')->exists());
 
         app(Debts::class)->repay($debt, '2026-02-01', '50.00');
         $this->assertSame('20.00', $debt->fresh()->load('repayments')->remaining());
-        $this->assertSame('-20.00', $this->balances()['2560']);
+        $this->assertSame('-20.00', $this->balances()['2260']);
     }
 
     #[Test]
@@ -197,7 +198,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
 
         $this->assertSame(Claim::STATUS_APPROVED, $claim->fresh()->status);
         $this->assertSame('0.00', $this->balances()['6640']);
-        $this->assertSame('0.00', $this->balances()['2560']);
+        $this->assertSame('0.00', $this->balances()['2260']);
     }
 
     #[Test]
@@ -245,8 +246,70 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
         $findings = app(ClosingCheck::class)->check($this->org->id, '2025-01-01', '2025-12-31');
 
         $this->assertSame(['expense-claims.drafts', 'expense-claims.unpaid'], array_column($findings, 'key'));
+        $this->assertSame([true, true], array_column($findings, 'blocking')); // D46
         $this->assertStringContainsString('30.00', $findings[1]['message']);
-        $this->assertSame('/expense-balances?status=approved&to=2025-12-31', $findings[1]['action_url']);
+        $this->assertSame('/expense-balances?status=approved&from=2025-01-01&to=2025-12-31', $findings[1]['action_url']);
+    }
+
+    #[Test]
+    public function the_year_end_closing_is_refused_until_the_claims_of_the_year_are_paid_or_in_debt(): void
+    {
+        $owner = $this->person(owner: true, employee: false);
+        $claim = $this->claim($owner, '2025-06-01', [['type' => 'meal', 'amount' => '20.00']]);
+        $closing = fn () => app(YearEndClosingAction::class)->execute($this->org, [
+            'year' => 2025, 'fiscal_year_id' => null, 'closing_date' => '2025-12-31', 'reference' => 'YE-2025', 'result_account_code' => '2900',
+        ], $this->user);
+
+        try {
+            $closing();
+            $this->fail('The closing was not refused.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('20.00', $e->getMessage());
+        }
+
+        app(Debts::class)->convert([$claim], '2025-12-31');
+        $this->assertSame([], app(ClosingCheck::class)->check($this->org->id, '2025-01-01', '2025-12-31'));
+    }
+
+    #[Test]
+    public function a_legacy_owner_claim_on_the_debt_account_goes_to_debt_without_an_entry(): void
+    {
+        $owner = $this->person(owner: true, employee: false);
+        $claim = $this->claim($owner, '2025-06-01', [['type' => 'meal', 'amount' => '40.00']]);
+        $claim->forceFill(['liability_account_code' => '2260'])->save(); // cost booked before (old rule / migration)
+        $before = JournalEntry::count();
+
+        $debt = $this->convert($owner, '2025-12-31');
+
+        $this->assertSame('2260', $debt->account_code);
+        $this->assertNull($debt->journal_entry_id);
+        $this->assertSame($before, JournalEntry::count());
+
+        app(Debts::class)->cancel($debt);
+        $this->assertSame(Claim::STATUS_APPROVED, $claim->fresh()->status);
+        $this->assertSame($before, JournalEntry::count());
+
+        $debt = $this->convert($owner, '2025-12-31');
+        app(Debts::class)->repay($debt, '2026-02-01', '40.00');
+        $this->assertSame('0.00', $debt->fresh()->load('repayments')->remaining());
+        $this->assertSame('40.00', $this->balances()['2260']); // Dr 2260 · Cr bank (the earlier credit is not in this test ledger)
+    }
+
+    #[Test]
+    public function closing_warns_about_claims_booked_earlier_or_paid_after_the_year_end(): void
+    {
+        $person = $this->person();
+        $late = $this->claim($person, '2025-12-15', [['type' => 'meal', 'amount' => '15.00']]);
+        app(Claims::class)->pay($late, '2026-01-20');
+        $legacy = $this->claim($person, '2025-11-15', [['type' => 'meal', 'amount' => '7.00']]);
+        $legacy->forceFill(['liability_account_code' => '2210'])->save();
+        $this->claim($person, '2024-03-01', [['type' => 'meal', 'amount' => '3.00']], approve: false);
+
+        $findings = app(ClosingCheck::class)->check($this->org->id, '2025-01-01', '2025-12-31');
+
+        $this->assertSame(['expense-claims.unpaid-booked', 'expense-claims.settled-later', 'expense-claims.drafts-earlier'], array_column($findings, 'key'));
+        $this->assertSame([], array_filter(array_column($findings, 'blocking'))); // warnings only
+        $this->assertStringContainsString('15.00', $findings[1]['message']);
     }
 
     #[Test]
@@ -331,8 +394,10 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
 
         $findings = app(ClosingCheck::class)->check($this->org->id, '2025-01-01', '2025-12-31');
 
-        $this->assertSame(['expense-claims.unpaid'], array_column($findings, 'key')); // old draft not reported
-        $this->assertStringContainsString('12.00', $findings[0]['message']);
+        $this->assertSame(['expense-claims.drafts-earlier', 'expense-claims.unpaid-earlier'], array_column($findings, 'key'));
+        $this->assertSame('/expense-balances?status=approved&to=2024-12-31', $findings[1]['action_url']);
+        $this->assertSame([], array_filter(array_column($findings, 'blocking'))); // earlier years: warnings only
+        $this->assertStringContainsString('12.00', $findings[1]['message']);
     }
 
     #[Test]

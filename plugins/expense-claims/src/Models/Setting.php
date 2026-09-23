@@ -26,8 +26,10 @@ class Setting extends Model
 
     /**
      * Defaults follow the Swiss SME chart (Banana, "Plan comptable PME"):
-     * 6640 travel expenses, 2210 other debts (staff), 2260/2560 debts towards
-     * related persons (owners and organs, CO 959a), 1020 bank.
+     * 6640 travel expenses, 2210 other debts (staff), 2260 short-term debts
+     * towards related persons (owners and organs, CO 959a), also for their
+     * debt records (D47: repayable on demand, i.e. within 12 months; use 2560
+     * when repayment is deferred beyond 12 months by agreement), 1020 bank.
      *
      * @var array<string, string>
      */
@@ -36,7 +38,7 @@ class Setting extends Model
         'staff_liability_code' => '2210',
         'owner_liability_code' => '2260',
         'staff_debt_code' => '2210',
-        'owner_debt_code' => '2560',
+        'owner_debt_code' => '2260',
         'bank_account_code' => '1020',
     ];
 
