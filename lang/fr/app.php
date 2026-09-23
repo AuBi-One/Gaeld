@@ -1046,6 +1046,8 @@ return [
     'password_updated' => 'Mot de passe mis à jour.',
     'welcome_setup' => 'Bienvenue sur Gäld ! Votre organisation a été configurée.',
     'welcome_onboarding' => 'Bienvenue sur Gäld ! Votre organisation est prête.',
+    'year_end_closing_blocked' => 'L\'exercice ne peut pas être clôturé :',
+    'year_end_closing_check_failed' => 'Le contrôle de clôture :check n\'a pas pu s\'exécuter, la clôture est donc refusée (voir les journaux).',
     'year_end_closing_done' => 'Bouclement annuel effectué.',
     'fiscal_year_closed' => 'Impossible de comptabiliser dans l\'exercice fiscal :year clôturé.',
     'fiscal_year_reopened' => 'L\'exercice fiscal :year a été réouvert.',

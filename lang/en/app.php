@@ -1104,6 +1104,8 @@ return [
     'account_deleted' => 'Your account has been permanently deleted.',
     'welcome_setup' => 'Welcome to Gäld! Your organization has been set up.',
     'welcome_onboarding' => 'Welcome to Gäld! Your organization is ready.',
+    'year_end_closing_blocked' => 'The year cannot be closed:',
+    'year_end_closing_check_failed' => 'The closing check :check could not run, so the closing is refused (see the logs).',
     'year_end_closing_done' => 'Year-end closing completed.',
     'fiscal_year_closed' => 'Cannot post to closed fiscal year :year.',
     'fiscal_year_reopened' => 'Fiscal year :year has been reopened.',

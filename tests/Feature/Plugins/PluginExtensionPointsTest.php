@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Plugins;
 
+use App\Domains\Accounting\Actions\YearEndClosingAction;
 use App\Domains\Accounting\Contracts\ClosingCheckInterface;
 use App\Domains\Payroll\Models\Employee;
 use App\Support\Plugins\PluginNavigation;
@@ -43,6 +44,58 @@ class PluginExtensionPointsTest extends TestCase
                 ->where('pluginNavigation.2.icon', 'FilePen'));
     }
 
+    public function test_a_blocking_closing_check_refuses_the_closing(): void
+    {
+        $this->app->instance('demo.blocking', new class implements ClosingCheckInterface
+        {
+            public function check(string $organizationId, string $fromDate, string $toDate): array
+            {
+                return [
+                    ['key' => 'warn', 'message' => 'Only a warning.'],
+                    ['key' => 'block', 'message' => "Resolve this first ({$toDate}).", 'blocking' => true],
+                ];
+            }
+        });
+        $this->app->tag(['demo.blocking'], ClosingCheckInterface::TAG);
+
+        $this->actAsOrg()->get('/accounting/year-end-closing?year=2025')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('closingChecks.1.blocking', true));
+
+        try {
+            app(YearEndClosingAction::class)->execute($this->organization, [
+                'year' => 2025, 'fiscal_year_id' => null, 'closing_date' => '2025-12-31', 'reference' => 'YE-2025', 'result_account_code' => '2900',
+            ], $this->user);
+            $this->fail('The closing was not refused.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame(__('app.year_end_closing_blocked').' Resolve this first (2025-12-31).', $e->getMessage());
+        }
+    }
+
+    public function test_a_failing_closing_check_blocks_the_closing_without_leaking_the_error(): void
+    {
+        $this->app->instance('demo.failing', new class implements ClosingCheckInterface
+        {
+            public function check(string $organizationId, string $fromDate, string $toDate): array
+            {
+                throw new \RuntimeException('secret internals');
+            }
+        });
+        $this->app->tag(['demo.failing'], ClosingCheckInterface::TAG);
+
+        $this->actAsOrg()->get('/accounting/year-end-closing?year=2025')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('closingChecks.0.blocking', true)
+                ->where('closingChecks.0.message', fn (string $m): bool => ! str_contains($m, 'secret')));
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage(__('app.year_end_closing_blocked'));
+        app(YearEndClosingAction::class)->execute($this->organization, [
+            'year' => 2025, 'fiscal_year_id' => null, 'closing_date' => '2025-12-31', 'reference' => 'YE-2025', 'result_account_code' => '2900',
+        ], $this->user);
+    }
+
     public function test_tagged_closing_checks_reach_the_wizard(): void
     {
         $this->app->instance('demo.check', new class implements ClosingCheckInterface
@@ -58,6 +111,7 @@ class PluginExtensionPointsTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('closingChecks.0.key', 'demo')
+                ->where('closingChecks.0.blocking', false)
                 ->where('closingChecks.0.message', 'period 2025-01-01 2025-12-31'));
     }
 

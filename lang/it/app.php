@@ -1012,6 +1012,8 @@ return [
     'password_updated' => 'Password aggiornata.',
     'welcome_setup' => 'Benvenuto in Gäld! La tua organizzazione è stata configurata.',
     'welcome_onboarding' => 'Benvenuto in Gäld! La tua organizzazione è pronta.',
+    'year_end_closing_blocked' => 'L\'esercizio non può essere chiuso:',
+    'year_end_closing_check_failed' => 'Il controllo di chiusura :check non ha potuto essere eseguito, quindi la chiusura è rifiutata (vedi i log).',
     'year_end_closing_done' => 'Chiusura annuale completata.',
     'fiscal_year_closed' => 'Impossibile registrare nell\'esercizio fiscale :year chiuso.',
     'fiscal_year_reopened' => 'L\'esercizio fiscale :year è stato riaperto.',

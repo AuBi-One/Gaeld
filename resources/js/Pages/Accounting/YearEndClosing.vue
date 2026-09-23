@@ -30,7 +30,8 @@ const props = defineProps({
   availableYears: { type: Array, default: () => [] },
   unsettledVatPeriods: { type: Array, default: () => [] },
   outstandingInvoices: { type: Array, default: () => [] },
-  // Non-blocking findings contributed by plugins: [{ key, message, action_label?, action_url? }]
+  // Findings contributed by plugins: [{ key, message, action_label?, action_url?, blocking }];
+  // blocking findings (also a check that failed) stop the wizard and the closing
   closingChecks: { type: Array, default: () => [] },
 })
 
@@ -58,6 +59,8 @@ const reopenForm = useForm({
 const hasAccounts = computed(() => props.income.length > 0 || props.expenses.length > 0)
 const isYearClosed = computed(() => props.closedYears.includes(props.year))
 const hasUnsettledVat = computed(() => props.unsettledVatPeriods.length > 0)
+// Plugin closing checks may block the closing until they are resolved.
+const hasBlockingChecks = computed(() => props.closingChecks.some(check => check.blocking))
 
 const netResultNum = computed(() => parseFloat(props.netResult ?? 0))
 const isProfit     = computed(() => netResultNum.value >= 0)
@@ -70,6 +73,8 @@ const accountColumns = computed(() => [
 
 // ── Wizard state ──────────────────────────────────────────────
 const currentStep = ref(0)
+// Another year was chosen: start the wizard again (its checks are new).
+watch(() => props.year, () => { currentStep.value = 0 })
 const steps = computed(() => [
   { key: 'review', label: t('year_end_wizard_step_review') },
   { key: 'outstanding', label: t('year_end_wizard_step_outstanding') },
@@ -79,6 +84,7 @@ const steps = computed(() => [
 
 // Step 3 (VAT) cannot advance while there are unsettled periods.
 const canAdvance = computed(() => {
+  if (currentStep.value === 1 && hasBlockingChecks.value) return false
   if (currentStep.value === 2 && hasUnsettledVat.value) return false
   return currentStep.value < steps.value.length - 1
 })
@@ -270,7 +276,9 @@ function daysOverdueLabel(n) {
         <div
           v-for="check in closingChecks"
           :key="check.key"
-          class="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+          :class="check.blocking
+            ? 'flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200'
+            : 'flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200'"
         >
           <AlertTriangle class="h-4 w-4 shrink-0" />
           <span class="flex-1">{{ check.message }}</span>

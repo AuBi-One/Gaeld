@@ -10,6 +10,7 @@ use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Models\VatEntry;
 use App\Domains\Accounting\Services\ClosingAccountsService;
+use App\Domains\Accounting\Services\ClosingChecks;
 use App\Domains\Accounting\Services\FiscalYearService;
 use App\Domains\Accounting\Services\LedgerService;
 use App\Domains\Accounting\Services\LegalArchivingService;
@@ -57,6 +58,12 @@ class YearEndClosingAction
         } else {
             $from = "{$year}-01-01";
             $to = "{$year}-12-31";
+        }
+
+        // Blocking findings of plugin closing checks (e.g. unbooked expense claims) refuse the closing.
+        $blocking = app(ClosingChecks::class)->blocking($orgId, $from, $to);
+        if ($blocking !== []) {
+            throw new \RuntimeException(__('app.year_end_closing_blocked').' '.implode(' ', $blocking));
         }
 
         [$income, $expenses] = $this->closingAccounts->compute($orgId, $from, $to);

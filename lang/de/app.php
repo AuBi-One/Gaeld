@@ -1049,6 +1049,8 @@ return [
     'password_updated' => 'Passwort aktualisiert.',
     'welcome_setup' => 'Willkommen bei Gäld! Ihre Organisation wurde eingerichtet.',
     'welcome_onboarding' => 'Willkommen bei Gäld! Ihre Organisation ist bereit.',
+    'year_end_closing_blocked' => 'Das Jahr kann nicht abgeschlossen werden:',
+    'year_end_closing_check_failed' => 'Die Abschlussprüfung :check konnte nicht ausgeführt werden, daher wird der Abschluss verweigert (siehe Protokolle).',
     'year_end_closing_done' => 'Jahresabschluss abgeschlossen.',
     'fiscal_year_closed' => 'Buchung im abgeschlossenen Geschäftsjahr :year nicht möglich.',
     'fiscal_year_reopened' => 'Geschäftsjahr :year wurde wiedereröffnet.',
