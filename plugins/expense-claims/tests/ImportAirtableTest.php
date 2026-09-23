@@ -119,9 +119,11 @@ class ImportAirtableTest extends ExpenseClaimsTestCase
 
         $unpaid = Claim::where('external_ref', 'recB1')->firstOrFail();
         $this->assertSame(Claim::STATUS_APPROVED, $unpaid->status);
-        $this->assertNotNull($unpaid->journal_entry_id);
+        $this->assertNull($unpaid->journal_entry_id);
+        $this->assertNull($unpaid->liability_account_code); // not booked: the cost is booked when paid (D37)
+        $this->assertSame('70.00', (string) $unpaid->total);
         $this->assertSame(Claim::STATUS_SETTLED, Claim::where('external_ref', 'recB2')->value('status'));
-        $this->assertSame(1, JournalEntry::count()); // only the unpaid claim, at 70.00; no correction entry
+        $this->assertSame(0, JournalEntry::count()); // no approval entry, no correction entry
     }
 
     #[Test]
@@ -148,10 +150,11 @@ class ImportAirtableTest extends ExpenseClaimsTestCase
         $debt = DebtRecord::sole();
         $this->assertSame('130.00', (string) $debt->amount); // 100 km × 0.70 + 20 + 40 × 1, not Airtable's 135
         $this->assertSame('2025-12-31', $debt->date->toDateString());
-        // Approvals grouped per month (2025-03, 2025-04, 2025-06, 2026-02) + one transfer to the debt account.
-        $this->assertSame(5, JournalEntry::count());
-        $this->assertSame(1, JournalEntry::where('reference', 'like', 'EC-DEBT-%')->count());
-        $this->assertSame(1, JournalEntry::where('reference', 'EC-APP-202506')->count()); // 40 claims, one entry
+        // Only the debt: one entry for the person on the debt date, Dr 6640 · Cr 2560 (D37, D38).
+        $this->assertSame(1, JournalEntry::count());
+        $entry = JournalEntry::with('lines.account')->sole();
+        $this->assertSame('2025-12-31', $entry->date->toDateString());
+        $this->assertSame(['2560' => '-130.00', '6640' => '130.00'], $entry->lines->mapWithKeys(fn ($l) => [$l->account->code => number_format((float) $l->debit - (float) $l->credit, 2, '.', '')])->sortKeys()->all());
         $this->assertSame(0, JournalEntry::where('is_posted', false)->count());
     }
 
@@ -179,11 +182,11 @@ class ImportAirtableTest extends ExpenseClaimsTestCase
 
         $this->artisan('expense-claims:import-airtable', $args + ['--commit' => true, '--draft' => true])->assertSuccessful();
 
-        // One approval entry for March 2025 (two people), one for February 2026, one debt entry for both people.
-        $this->assertSame(3, JournalEntry::count());
-        $this->assertSame(3, JournalEntry::where('is_posted', false)->count());
+        // One debt entry per person on the debt date, as drafts; the approved 2026 claim books nothing.
+        $this->assertSame(2, JournalEntry::count());
+        $this->assertSame(2, JournalEntry::where('is_posted', false)->count());
         $this->assertSame(2, DebtRecord::count());
-        $this->assertSame(1, DebtRecord::query()->distinct()->count('journal_entry_id'));
+        $this->assertSame(2, DebtRecord::query()->distinct()->count('journal_entry_id'));
         $this->assertSame(Claim::STATUS_DEBT, Claim::where('external_ref', 'recR2')->value('status'));
         $this->assertNotNull(Claim::where('external_ref', 'recR3')->value('approved_at'));
     }

@@ -18,9 +18,9 @@ use Plugins\ExpenseClaims\Services\Claims;
 use Plugins\ExpenseClaims\Services\Debts;
 
 /**
- * Expense balances (managers, §8.2): everyone's unpaid claims with filters
- * and grouped actions (approve, pay from an account, pass to debt), balances
- * per person and the debt records.
+ * Expense balances (managers only, `expenses.approve`, §8.2): everyone's
+ * unpaid claims with filters and grouped actions (approve, pay from an
+ * account, pass to debt), balances per person and the debt records.
  */
 class BalanceController extends PluginController
 {
@@ -31,7 +31,7 @@ class BalanceController extends PluginController
 
     public function index(Request $request): Response
     {
-        $this->authorizeView();
+        $this->authorizeWrite(); // managers only (expenses.approve), not the viewer role (D39)
         $status = in_array($request->string('status')->toString(), [Claim::STATUS_DRAFT, Claim::STATUS_APPROVED], true) ? $request->string('status')->toString() : '';
         $personId = $request->string('person_id')->toString();
         $to = $request->string('to')->toString();

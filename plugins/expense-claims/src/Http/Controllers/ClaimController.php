@@ -91,7 +91,7 @@ class ClaimController extends PluginController
 
         return $this->page('ExpenseClaims/Show', [
             'claim' => $this->present($claim),
-            'from' => $request->string('from')->toString() === 'balances' && $this->allows(Permission::ExpensesView) ? 'balances' : 'claims',
+            'from' => $request->string('from')->toString() === 'balances' && $this->canManage() ? 'balances' : 'claims',
             'canEdit' => $claim->isDraft() && $this->mayEdit($claim),
             'canAttach' => $this->mayAttach($claim),
             'accounts' => $this->canManage() ? $this->paymentAccounts() : [],

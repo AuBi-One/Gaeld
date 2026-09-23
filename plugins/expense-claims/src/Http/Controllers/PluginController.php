@@ -14,9 +14,9 @@ use Plugins\ExpenseClaims\Models\Person;
 use Plugins\ExpenseClaims\Models\Setting;
 
 /**
- * Access (docs/DESIGN-expense-claims.md §8.2): everyone who can enter
- * expenses (`expenses.create`) works on their own claims; `expenses.view`
- * sees everyone's; `expenses.approve` ("manager") does every booking action.
+ * Access (docs/DESIGN-expense-claims.md §8.2, D39): everyone who can enter
+ * expenses (`expenses.create`) works on their own claims; only managers
+ * (`expenses.approve`) see everyone's claims and the balances and book.
  */
 abstract class PluginController extends Controller
 {
@@ -27,11 +27,6 @@ abstract class PluginController extends Controller
     protected function orgId(): string
     {
         return app(CurrentOrganization::class)->id();
-    }
-
-    protected function authorizeView(): void
-    {
-        abort_unless($this->allows(Permission::ExpensesView), 403);
     }
 
     protected function authorizeWrite(): void
@@ -59,10 +54,10 @@ abstract class PluginController extends Controller
         return $this->ownPersonId() !== null && $claim->person_id === $this->ownPersonId();
     }
 
-    /** The claim's person, or anyone with `expenses.view`, may see a claim. */
+    /** The claim's person, or a manager (`expenses.approve`), may see a claim. */
     protected function authorizeSee(Claim $claim): void
     {
-        abort_unless($this->isOwn($claim) || $this->allows(Permission::ExpensesView), 403);
+        abort_unless($this->isOwn($claim) || $this->canManage(), 403);
     }
 
     /**
@@ -141,7 +136,6 @@ abstract class PluginController extends Controller
             'translations' => array_merge((array) trans('app'), $plugin),
             'canManage' => $this->canManage(),
             'canCreate' => $this->allows(Permission::ExpensesCreate),
-            'canViewAll' => $this->allows(Permission::ExpensesView),
         ]);
     }
 }

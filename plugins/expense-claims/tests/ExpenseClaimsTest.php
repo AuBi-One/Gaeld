@@ -90,30 +90,35 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
     }
 
     #[Test]
-    public function approving_books_expense_against_the_staff_or_owner_liability(): void
+    public function approving_books_nothing_and_paying_books_the_cost_against_the_bank(): void
     {
-        $this->claim($this->person(), '2026-03-10', [
+        $staff = $this->claim($this->person(), '2026-03-10', [
             ['type' => 'km', 'km' => '100', 'round_trip' => false],
             ['type' => 'meal', 'amount' => '32.50'],
         ]);
-        $this->claim($this->person(owner: true, employee: false), '2026-03-11', [['type' => 'other', 'amount' => '10.00']]);
+        $owner = $this->claim($this->person(owner: true, employee: false), '2026-03-11', [['type' => 'other', 'amount' => '10.00']]);
+        $this->assertSame(0, JournalEntry::count()); // D37: approval only records who and when
+        $this->assertSame(Claim::STATUS_APPROVED, $staff->status);
+
+        app(Claims::class)->pay([$staff, $owner], '2026-03-31');
 
         $balances = $this->balances();
         $this->assertSame('117.50', $balances['6640']);   // 100 km × 0.75 + 32.50 + 10
-        $this->assertSame('-107.50', $balances['2210']);
-        $this->assertSame('-10.00', $balances['2260']);
+        $this->assertSame('-117.50', $balances['1020']);
+        $this->assertArrayNotHasKey('2210', $balances);
+        $this->assertSame(2, JournalEntry::count());     // one entry per person
         $this->assertSame('Frais de déplacement', Account::where('code', '6640')->value('name'));
     }
 
     #[Test]
-    public function unapproving_reverses_the_booking_and_reapproving_gets_a_new_reference(): void
+    public function unapproving_returns_to_draft_without_any_entry(): void
     {
         $claim = $this->claim($this->person(), '2026-03-10', [['type' => 'meal', 'amount' => '20.00']]);
         app(Claims::class)->unapprove($claim);
-        app(Claims::class)->approve($claim->fresh());
 
-        $this->assertSame('-20.00', $this->balances()['2210']);
-        $this->assertTrue(JournalEntry::where('reference', 'EC-0001-2')->exists());
+        $this->assertSame(Claim::STATUS_DRAFT, $claim->fresh()->status);
+        $this->assertNull($claim->fresh()->approved_at);
+        $this->assertSame(0, JournalEntry::count());
     }
 
     #[Test]
@@ -136,13 +141,14 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
         $this->assertSame('payroll', $paid->fresh()->settled_via);
         $this->assertSame(Claim::STATUS_APPROVED, $kept->fresh()->status);
         $balances = $this->balances();
-        $this->assertSame('-15.00', $balances['2210']);   // 45 booked − 30 paid
+        $this->assertSame('30.00', $balances['6640']);    // the paid claim's cost, booked with the salary (D37)
         $this->assertSame('5.00', $balances['6530']);     // manual remainder keeps the core account
+        $this->assertArrayNotHasKey('2210', $balances);   // no accrual
 
         app(UnpostPayrollAction::class)->execute($slip->fresh());
         $this->assertSame(Claim::STATUS_APPROVED, $paid->fresh()->status);
         $this->assertNull($paid->fresh()->salary_slip_id);
-        $this->assertSame('-45.00', $this->balances()['2210']);
+        $this->assertSame('0.00', $this->balances()['6640']);
     }
 
     #[Test]
@@ -171,7 +177,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
         $this->assertSame('70.00', (string) $debt->amount);
         $this->assertSame('2560', $debt->account_code);
         $balances = $this->balances();
-        $this->assertSame('-20.00', $balances['2260']);  // 2026 claim still short term
+        $this->assertSame('70.00', $balances['6640']);   // cost booked on the debt date; the 2026 claim is not booked yet
         $this->assertSame('-70.00', $balances['2560']);
         $this->assertTrue(JournalEntry::where('reference', 'like', 'EC-DEBT-20251231%')->whereDate('date', '2025-12-31')->exists());
 
@@ -190,21 +196,22 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
         app(Debts::class)->cancel($debt);
 
         $this->assertSame(Claim::STATUS_APPROVED, $claim->fresh()->status);
-        $this->assertSame('-20.00', $this->balances()['2260']);
+        $this->assertSame('0.00', $this->balances()['6640']);
         $this->assertSame('0.00', $this->balances()['2560']);
     }
 
     #[Test]
-    public function staff_debt_record_on_the_same_account_needs_no_entry(): void
+    public function staff_debt_is_booked_on_the_staff_account(): void
     {
         $person = $this->person();
         $this->claim($person, '2025-11-10', [['type' => 'meal', 'amount' => '20.00']]);
-        $before = JournalEntry::count();
 
         $debt = $this->convert($person, '2025-12-31');
 
-        $this->assertNull($debt->journal_entry_id);
-        $this->assertSame($before, JournalEntry::count());
+        $this->assertSame('2210', $debt->account_code);
+        $this->assertNotNull($debt->journal_entry_id);
+        $this->assertSame('-20.00', $this->balances()['2210']);
+        $this->assertSame('20.00', $this->balances()['6640']);
     }
 
     #[Test]

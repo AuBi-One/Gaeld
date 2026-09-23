@@ -5,6 +5,7 @@ namespace Plugins\ExpenseClaims\Tests;
 require_once __DIR__.'/ExpenseClaimsTestCase.php';
 
 use App\Domains\Users\Models\User;
+use App\Support\Plugins\PluginNavigation;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\Test;
@@ -91,6 +92,24 @@ class AccessTest extends ExpenseClaimsTestCase
         app(Claims::class)->approve($mine);
         $this->asStaff()->get("/expense-claims/{$mine->id}/edit")->assertRedirect("/expense-claims/{$mine->id}");
         $this->asStaff()->get("/expense-claims/{$mine->id}")->assertInertia(fn ($page) => $page->where('canAttach', false));
+    }
+
+    #[Test]
+    public function the_viewer_role_cannot_see_the_balances_or_other_claims(): void
+    {
+        $viewer = User::factory()->create(['onboarding_completed_at' => now()]);
+        $this->organization->users()->attach($viewer->id, ['role' => 'viewer']);
+        $this->assignOrganizationRole($viewer, $this->organization, 'viewer');
+        $claim = $this->draft($this->other);
+        $as = fn () => $this->actingAs($viewer)->withSession(['current_organization_id' => $this->organization->id]);
+
+        $as()->get('/expense-balances')->assertForbidden();
+        $as()->get("/expense-claims/{$claim->id}")->assertForbidden();
+        $as()->get("/expense-claims/{$claim->id}/attachments/0")->assertForbidden();
+        $this->assertNotContains('expense_balances', array_column(
+            array_filter(app(PluginNavigation::class)->toArray(), fn (array $i): bool => $viewer->hasPermissionTo((string) $i['permission'])),
+            'key',
+        ));
     }
 
     #[Test]

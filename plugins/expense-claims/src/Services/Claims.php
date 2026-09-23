@@ -15,10 +15,10 @@ use Plugins\ExpenseClaims\Models\Person;
 use Plugins\ExpenseClaims\Models\Setting;
 
 /**
- * Claim life cycle: draft → approved (booked: Dr expense · Cr liability) →
- * settled (paid with a salary or from an account) or moved into a debt
- * record. Actions on several claims write one grouped entry
- * (docs/DESIGN-expense-claims.md §8.4).
+ * Claim life cycle: draft → approved (status only) → paid (with a salary
+ * or from an account) or moved into a debt record; the cost is booked at
+ * payment or debt, one entry per person and batch
+ * (docs/DESIGN-expense-claims.md §8.4, D37).
  */
 final class Claims
 {
@@ -77,76 +77,52 @@ final class Claims
     }
 
     /**
-     * Approve drafts and book them: one entry per calendar month of the claim
-     * dates, dated on the latest claim date of that month (the expense stays
-     * in its period), Dr expense account(s) · Cr the liability of each person.
+     * Approve drafts: status, approver and time only; nothing is booked (D37).
+     * The cost is booked when the claim leaves the company: paid (from an
+     * account or with a salary) or passed to debt.
      *
      * @param  Claim|iterable<Claim>  $claims
      * @return Collection<int, Claim>
      */
-    public function approve(Claim|iterable $claims, ?int $approverId = null, bool $draft = false): Collection
+    public function approve(Claim|iterable $claims, ?int $approverId = null): Collection
     {
-        return DB::transaction(function () use ($claims, $approverId, $draft): Collection {
-            $locked = $this->lockMany($claims, Claim::STATUS_DRAFT)->load(['lines', 'person']);
-            $orgId = (string) $locked->first()?->organization_id;
-            $settings = Setting::forOrganization($orgId);
+        return DB::transaction(function () use ($claims, $approverId): Collection {
+            $locked = $this->lockMany($claims, Claim::STATUS_DRAFT)->load('lines');
             foreach ($locked as $claim) {
                 if ($claim->lines->isEmpty() || ! Money::isPositive((string) $claim->total)) {
                     throw new \DomainException(__('expense-claims::ec.claim_empty').' ('.$claim->reference().')');
                 }
-                $claim->liability_account_code = $claim->person?->is_owner ? $settings->owner_liability_code : $settings->staff_liability_code;
             }
-
-            foreach ($locked->groupBy(fn (Claim $c): string => $c->date->format('Y-m')) as $month => $group) {
-                $single = $group->count() === 1 ? $group->first() : null;
-                $entry = $this->journal->book($orgId, new JournalEntryData(
-                    date: $group->max(fn (Claim $c): string => $c->date->toDateString()),
-                    reference: $this->accounts->uniqueReference($orgId, $single?->reference() ?? 'EC-APP-'.str_replace('-', '', (string) $month)),
-                    description: $single !== null
-                        ? "Note de frais {$single->reference()} — {$single->person?->name}: {$single->title}"
-                        : "Notes de frais {$month} — {$group->count()} notes",
-                    lines: $this->approvalLines($orgId, $group),
-                ), $draft);
-
-                foreach ($group as $claim) {
-                    $claim->forceFill([
-                        'status' => Claim::STATUS_APPROVED,
-                        'journal_entry_id' => $entry->id,
-                        'approved_by' => $approverId,
-                        'approved_at' => now(),
-                    ])->save();
-                }
-            }
+            Claim::withoutGlobalScopes()->whereIn('id', $locked->modelKeys())->update([
+                'status' => Claim::STATUS_APPROVED,
+                'approved_by' => $approverId,
+                'approved_at' => now(),
+            ]);
 
             return $locked;
         });
     }
 
     /**
-     * Return an unpaid claim to draft: counter-entry for this claim's part of
-     * the approval entry (always the claim's own amounts, so undoing claims of
-     * a group one after the other never reverses a part twice).
+     * Return an approved, unpaid claim to draft. Nothing to undo in the
+     * ledger, except for a claim approved before D37 with its own approval
+     * entry (legacy: undone like before). A claim whose cost was booked
+     * before Gäld (migration without --book) cannot go back to draft.
      */
     public function unapprove(Claim $claim): Claim
     {
         return DB::transaction(function () use ($claim): Claim {
-            // Lock every claim of the same approval entry in id order first (no deadlock between two cancels).
+            // Lock every claim of the same (legacy) approval entry in id order first (no deadlock between two cancels).
             $entryId = Claim::withoutGlobalScopes()->whereKey($claim->id)->value('journal_entry_id');
             if ($entryId !== null) {
                 Claim::withoutGlobalScopes()->where('journal_entry_id', $entryId)->orderBy('id')->lockForUpdate()->pluck('id');
             }
             $claim = $this->locked($claim, Claim::STATUS_APPROVED)->load(['lines', 'person']);
-            $description = "Annulation approbation {$claim->reference()}";
-            $orgId = (string) $claim->organization_id;
-            $draft = $this->journal->draft($claim->journal_entry_id);
-            if ($draft !== null) {
-                // Still a draft (e.g. a migration): rewrite it with the other claims only.
-                $others = Claim::withoutGlobalScopes()->where('journal_entry_id', $draft->id)->whereKeyNot($claim->id)
-                    ->orderBy('id')->lockForUpdate()->get()->load(['lines', 'person']);
-                $newId = $this->journal->replaceDraft($draft, $this->approvalLines($orgId, $others));
-                Claim::withoutGlobalScopes()->whereIn('id', $others->modelKeys())->update(['journal_entry_id' => $newId]);
-            } else {
-                $this->journal->undoPart($claim->journal_entry_id, $description, $this->approvalLines($orgId, new Collection([$claim])));
+            if ($claim->journal_entry_id === null && $claim->liability_account_code !== null) {
+                throw new \DomainException(__('expense-claims::ec.booked_before_gald'));
+            }
+            if ($claim->journal_entry_id !== null) {
+                $this->undoLegacyApproval($claim);
             }
             $claim->forceFill(['status' => Claim::STATUS_DRAFT, 'liability_account_code' => null, 'journal_entry_id' => null, 'approved_by' => null, 'approved_at' => null])->save();
 
@@ -155,8 +131,9 @@ final class Claims
     }
 
     /**
-     * Pay approved claims from a bank or cash account: one entry, Dr the
-     * liability of each person · Cr the account.
+     * Pay approved claims from a bank or cash account: one entry per person
+     * for the batch, dated $date: Dr the cost (expense account per line, or
+     * the liability for a claim booked earlier) · Cr the account.
      *
      * @param  Claim|iterable<Claim>  $claims
      * @return Collection<int, Claim>
@@ -164,38 +141,37 @@ final class Claims
     public function pay(Claim|iterable $claims, string $date, ?string $accountCode = null): Collection
     {
         return DB::transaction(function () use ($claims, $date, $accountCode): Collection {
-            $locked = $this->lockMany($claims, Claim::STATUS_APPROVED)->load('person');
+            $locked = $this->lockMany($claims, Claim::STATUS_APPROVED)->load(['lines', 'person']);
             if ($locked->contains(fn (Claim $c): bool => $c->date->toDateString() > $date)) {
                 throw new \DomainException(__('expense-claims::ec.claim_after_payment_date', ['date' => $date]));
             }
             $orgId = (string) $locked->first()?->organization_id;
             $accountCode ??= Setting::forOrganization($orgId)->bank_account_code;
-            $total = Money::sumAmounts($locked->map(fn (Claim $c): array => ['amount' => (string) $c->total])->values()->all());
-            $single = $locked->count() === 1 ? $locked->first() : null;
 
-            $entry = $this->journal->book($orgId, new JournalEntryData(
-                date: $date,
-                reference: $this->accounts->uniqueReference($orgId, $single !== null ? $single->reference().'-PAY' : 'EC-PAY-'.str_replace('-', '', $date)),
-                description: $single !== null
-                    ? "Remboursement {$single->reference()} — {$single->person?->name}"
-                    : "Remboursement de {$locked->count()} notes de frais",
-                lines: [
-                    ...$this->lines->perPerson($orgId, $locked, fn (Claim $c): string => (string) $c->liability_account_code, 'debit'),
-                    new JournalLineData($this->accounts->id($orgId, $accountCode), '0', $total, $this->lines->references($locked)),
-                ],
-            ));
-
-            Claim::withoutGlobalScopes()->whereIn('id', $locked->modelKeys())->update([
-                'status' => Claim::STATUS_SETTLED, 'settled_via' => 'bank', 'settled_on' => $date, 'settlement_entry_id' => $entry->id,
-            ]);
+            foreach ($locked->groupBy('person_id') as $group) {
+                $person = $group->first()?->person;
+                $total = Money::sumAmounts($group->map(fn (Claim $c): array => ['amount' => (string) $c->total])->values()->all());
+                $entry = $this->journal->book($orgId, new JournalEntryData(
+                    date: $date,
+                    reference: $this->accounts->uniqueReference($orgId, 'EC-PAY-'.str_replace('-', '', $date).'-'.EntryLines::tag((string) $person?->name)),
+                    description: "Remboursement notes de frais — {$person?->name} ({$group->count()})",
+                    lines: [
+                        ...$this->lines->costs($orgId, $group, 'debit'),
+                        new JournalLineData($this->accounts->id($orgId, $accountCode), '0', $total, $this->lines->references($group)),
+                    ],
+                ));
+                Claim::withoutGlobalScopes()->whereIn('id', $group->modelKeys())->update([
+                    'status' => Claim::STATUS_SETTLED, 'settled_via' => 'bank', 'settled_on' => $date, 'settlement_entry_id' => $entry->id,
+                ]);
+            }
 
             return $locked;
         });
     }
 
     /**
-     * Cancel a payment from an account: the whole payment entry is undone and
-     * every claim it paid is approved (unpaid) again.
+     * Cancel a payment from an account: the person's payment entry is undone
+     * and every claim it paid is approved (unpaid) again.
      *
      * @return int the number of claims reopened
      */
@@ -219,12 +195,31 @@ final class Claims
     }
 
     /**
-     * Lines of an approval: Dr expense account(s) · Cr each person's liability.
-     *
-     * @param  Collection<int, Claim>  $claims  with lines and person loaded, liability_account_code set
+     * Undo the approval entry of a claim approved before D37 (Dr expense ·
+     * Cr liability, possibly grouped with other claims): a draft entry is
+     * rewritten without it, a posted one gets a counter-entry for its part.
+     */
+    private function undoLegacyApproval(Claim $claim): void
+    {
+        $orgId = (string) $claim->organization_id;
+        $lines = fn (Collection $claims): array => $this->legacyApprovalLines($orgId, $claims);
+        $draft = $this->journal->draft($claim->journal_entry_id);
+        if ($draft !== null) {
+            $others = Claim::withoutGlobalScopes()->where('journal_entry_id', $draft->id)->whereKeyNot($claim->id)
+                ->orderBy('id')->lockForUpdate()->get()->load(['lines', 'person']);
+            $newId = $this->journal->replaceDraft($draft, $lines($others));
+            Claim::withoutGlobalScopes()->whereIn('id', $others->modelKeys())->update(['journal_entry_id' => $newId]);
+
+            return;
+        }
+        $this->journal->undoPart($claim->journal_entry_id, "Annulation approbation {$claim->reference()}", $lines(new Collection([$claim])));
+    }
+
+    /**
+     * @param  Collection<int, Claim>  $claims  with lines and person loaded
      * @return list<JournalLineData>
      */
-    private function approvalLines(string $orgId, Collection $claims): array
+    private function legacyApprovalLines(string $orgId, Collection $claims): array
     {
         return $claims->isEmpty() ? [] : [
             ...$this->lines->expenses($orgId, $claims, 'debit'),

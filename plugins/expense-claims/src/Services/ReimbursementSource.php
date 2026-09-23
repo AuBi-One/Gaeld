@@ -13,11 +13,15 @@ use Plugins\ExpenseClaims\Models\Person;
 
 /**
  * Offers a person's approved, unpaid claims (whole claims only) and the
- * remaining balance of their debt records to the payroll run.
+ * remaining balance of their debt records to the payroll run. A claim is
+ * debited to its cost account(s) in the salary entry (D37); a debt record to
+ * its debt account.
  * Item ids: "claim:<uuid>" and "debt:<uuid>".
  */
 final class ReimbursementSource implements ReimbursementSourceInterface
 {
+    public function __construct(private Accounts $accounts) {}
+
     public function openItems(string $organizationId, string $employeeId): array
     {
         $person = $this->person($organizationId, $employeeId);
@@ -36,10 +40,14 @@ final class ReimbursementSource implements ReimbursementSourceInterface
         $person = $this->person($organizationId, $employeeId);
         $open = $person === null ? [] : collect($this->items($person))->keyBy('id');
 
-        return array_map(function (string $id) use ($open): array {
+        return array_map(function (string $id) use ($open, $organizationId): array {
             $item = $open[$id] ?? null;
             if ($item === null) {
                 throw new \DomainException(__('expense-claims::ec.item_not_open', ['id' => $id]));
+            }
+            // The payroll posting resolves the accounts by code: create the plugin's ones when missing.
+            foreach ($item['splits'] ?? [['account_code' => $item['account_code']]] as $split) {
+                $this->accounts->ensure($organizationId, $split['account_code']);
             }
 
             return $item;
@@ -61,6 +69,8 @@ final class ReimbursementSource implements ReimbursementSourceInterface
                     ->where('person_id', $person?->id)
                     ->where('status', Claim::STATUS_APPROVED)
                     ->where('total', $item['amount'])
+                    // Not before its own date: the cost is booked at the salary's month end (D37).
+                    ->whereDate('date', '<=', $paidOn)
                     ->whereKey($id)
                     ->update([
                         'status' => Claim::STATUS_SETTLED,
@@ -106,7 +116,7 @@ final class ReimbursementSource implements ReimbursementSourceInterface
     }
 
     /**
-     * @return list<array{id: string, date: string, label: string, amount: string, account_code: string}>
+     * @return list<array{id: string, date: string, label: string, amount: string, account_code: string, splits?: list<array{account_code: string, amount: string}>}>
      */
     private function items(Person $person): array
     {
@@ -114,15 +124,23 @@ final class ReimbursementSource implements ReimbursementSourceInterface
             ->where('organization_id', $person->organization_id)
             ->where('person_id', $person->id)
             ->where('status', Claim::STATUS_APPROVED)
+            ->with('lines')
             ->orderBy('date')
             ->get()
-            ->map(fn (Claim $c): array => [
-                'id' => 'claim:'.$c->id,
-                'date' => $c->date->toDateString(),
-                'label' => $c->reference().' '.$c->title,
-                'amount' => Money::normalize((string) $c->total),
-                'account_code' => (string) $c->liability_account_code,
-            ]);
+            ->map(function (Claim $c): array {
+                // The cost is booked with the salary (D37): the expense account(s) of the
+                // lines, or the liability of a claim whose cost was booked earlier.
+                $splits = EntryLines::costSplits($c);
+
+                return [
+                    'id' => 'claim:'.$c->id,
+                    'date' => $c->date->toDateString(),
+                    'label' => $c->reference().' '.$c->title,
+                    'amount' => Money::normalize((string) $c->total),
+                    'account_code' => $splits[0]['account_code'],
+                    'splits' => $splits,
+                ];
+            });
 
         $debts = DebtRecord::withoutGlobalScopes()
             ->where('organization_id', $person->organization_id)

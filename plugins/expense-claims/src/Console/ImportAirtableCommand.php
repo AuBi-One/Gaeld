@@ -30,10 +30,11 @@ use Plugins\ExpenseClaims\Services\Rates;
  *   km amount always recomputed at the rate valid on the trip date
  *   (2025: 0.70, 2026: 0.75); Repas → meal, Autres → other;
  * - "A payer" → approved (no new journal entry), "Payé" → paid (migrated);
- *   with --book, claims are approved like in Gäld, one entry per month;
+ *   with --book, unpaid claims are approved like in Gäld (nothing booked:
+ *   the cost is booked when they are paid or passed to debt);
  *   with --book --debt-date=DATE, "Payé" claims up to DATE were not paid but
- *   recorded as a debt: they are booked and moved, in one entry, into one
- *   debt record per person on DATE; --draft writes every entry as a draft;
+ *   recorded as a debt: per person one debt record and one entry on DATE
+ *   (Dr cost · Cr debt account); --draft writes every entry as a draft;
  * - the difference between Airtable's "Montant final" and the recomputed
  *   total of unpaid claims is reported per person and, with
  *   --post-adjustment=DATE (required when there is a difference), posted per
@@ -48,7 +49,7 @@ class ImportAirtableCommand extends Command
         {--org= : Organisation id}
         {--commit : Write the claims (default: dry run)}
         {--post-adjustment= : Post the per-person correction on this date (e.g. 2025-12-31)}
-        {--book : Book unpaid claims like an approval (Dr expense / Cr liability, claim date) at the recomputed amounts; for a ledger that does not hold them yet. Replaces --post-adjustment}
+        {--book : For a ledger that does not hold the claims yet: approve unpaid claims at the recomputed amounts (the cost is booked when paid or passed to debt). Replaces --post-adjustment}
         {--debt-date= : With --book: Payé claims dated on or before this date were recorded as a debt in Airtable, not paid; book them and group them per person into a debt record on this date}
         {--draft : Write the journal entries as drafts (not posted), to be validated in the journal}
         {--report= : Write the detailed table to this file and print only totals (keeps personal data off the console)}';
@@ -191,7 +192,9 @@ class ImportAirtableCommand extends Command
                     'approved_at' => $p['paid'] || ! $book ? now() : null,
                     'settled_via' => $p['paid'] ? 'migrated' : null,
                     'total' => $p['total'],
-                    'liability_account_code' => $liability,
+                    // Without --book the ledger already holds the cost on the liability (booked before Gäld);
+                    // with --book nothing is booked until the claim is paid or passed to debt (D37).
+                    'liability_account_code' => $book ? null : $liability,
                     'source' => 'airtable',
                     'external_ref' => $p['record']['id'],
                 ]);
@@ -208,9 +211,9 @@ class ImportAirtableCommand extends Command
             }
 
             if ($book) {
-                // One entry per month for the approvals, one entry for the debt (§8.4).
+                // Approval books nothing; the debt gets one entry per person on the debt date (§8.4, D37, D38).
                 if ($toBook !== []) {
-                    $claims->approve($toBook, null, $draft);
+                    $claims->approve($toBook);
                 }
                 if ($toDebt !== []) {
                     $debts->convert($toDebt, $debtDate, 'Airtable : frais comptabilisés en dette', $draft);

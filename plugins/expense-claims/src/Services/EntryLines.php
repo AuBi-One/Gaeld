@@ -66,6 +66,54 @@ final class EntryLines
     }
 
     /**
+     * The cost side when claims leave the company (paid or passed to debt):
+     * the expense account(s) of their lines, or, for a claim whose cost was
+     * booked earlier (approved before D37, or migrated without --book), the
+     * liability it was booked to.
+     *
+     * @param  Collection<int, Claim>  $claims  with lines and person loaded
+     * @param  'debit'|'credit'  $side
+     * @return list<JournalLineData>
+     */
+    public function costs(string $organizationId, Collection $claims, string $side): array
+    {
+        [$booked, $open] = $claims->partition(fn (Claim $c): bool => $c->liability_account_code !== null);
+
+        return [
+            ...($open->isEmpty() ? [] : $this->expenses($organizationId, $open->values(), $side)),
+            ...($booked->isEmpty() ? [] : $this->perPerson($organizationId, $booked->values(), fn (Claim $c): string => (string) $c->liability_account_code, $side)),
+        ];
+    }
+
+    /**
+     * Cost per account of one claim, for the payroll entry.
+     *
+     * @return list<array{account_code: string, amount: string}>
+     */
+    public static function costSplits(Claim $claim): array
+    {
+        if ($claim->liability_account_code !== null) {
+            return [['account_code' => $claim->liability_account_code, 'amount' => Money::normalize((string) $claim->total)]];
+        }
+
+        return array_values($claim->lines
+            ->groupBy(fn (ClaimLine $l): string => (string) $l->expense_account_code)
+            ->map(fn (Collection $g, string $code): array => [
+                'account_code' => $code,
+                'amount' => Money::sumAmounts($g->map(fn (ClaimLine $l): array => ['amount' => (string) $l->amount])->values()->all()),
+            ])
+            ->all());
+    }
+
+    /** Short tag of a person for references (first three letters). */
+    public static function tag(string $name): string
+    {
+        $tag = mb_strtoupper(mb_substr(preg_replace('/[^\pL]/u', '', $name) ?? '', 0, 3));
+
+        return $tag !== '' ? $tag : 'X';
+    }
+
+    /**
      * @param  Collection<int, Claim>  $claims
      */
     public function references(Collection $claims): string

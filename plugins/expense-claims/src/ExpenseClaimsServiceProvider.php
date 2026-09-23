@@ -32,9 +32,9 @@ class ExpenseClaimsServiceProvider extends ServiceProvider
         Event::listen(Login::class, ApprovalNotice::class);
 
         $navigation = $this->app->make(PluginNavigation::class);
-        // Own claims: everyone who can enter expenses; balances: everyone who sees all expenses (§8.2).
+        // Own claims: everyone who can enter expenses; balances: managers only (§8.2, D39).
         $navigation->add(['expenses', 'payroll'], 'expense_claims', 'expense-claims::ec.nav_claims', '/expense-claims', 'expenses.create');
-        $navigation->add(['expenses', 'payroll'], 'expense_balances', 'expense-claims::ec.nav_balances', '/expense-balances', 'expenses.view');
+        $navigation->add(['expenses', 'payroll'], 'expense_balances', 'expense-claims::ec.nav_balances', '/expense-balances', 'expenses.approve');
         $navigation->add('organization_settings_nav', 'expense_settings', 'expense-claims::ec.nav_settings', '/settings/expense-claims', 'expenses.approve');
     }
 }

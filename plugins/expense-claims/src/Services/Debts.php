@@ -13,8 +13,9 @@ use Plugins\ExpenseClaims\Models\DebtRepayment;
 use Plugins\ExpenseClaims\Models\Setting;
 
 /**
- * Moves approved, unpaid claims into debt records of the company towards
- * each person (period end), and repays those debts.
+ * Passes approved, unpaid claims into debt records of the company towards
+ * each person (period end), booking their cost then (D37), and repays
+ * those debts.
  */
 final class Debts
 {
@@ -26,10 +27,11 @@ final class Debts
     ) {}
 
     /**
-     * Move approved claims dated on or before $date into one debt record per
-     * person dated $date, with one entry for all of them: Dr each claim's
-     * liability · Cr the person's debt account (no line when both are the
-     * same account, e.g. staff on 2210).
+     * Pass approved claims dated on or before $date to debt: per person one
+     * debt record and one entry dated $date (D37, D38): Dr the cost (expense
+     * account per line, or the liability of a claim booked earlier) · Cr the
+     * person's debt account (2560 owners, 2210 staff). A claim booked earlier
+     * on the debt account itself gives no line.
      *
      * @param  Claim|iterable<Claim>  $claims
      * @return Collection<int, DebtRecord>
@@ -37,38 +39,32 @@ final class Debts
     public function convert(Claim|iterable $claims, string $date, ?string $notes = null, bool $draft = false): Collection
     {
         return DB::transaction(function () use ($claims, $date, $notes, $draft): Collection {
-            $locked = $this->claims->lockMany($claims, Claim::STATUS_APPROVED)->load('person');
+            $locked = $this->claims->lockMany($claims, Claim::STATUS_APPROVED)->load(['lines', 'person']);
             if ($locked->contains(fn (Claim $c): bool => $c->date->toDateString() > $date)) {
                 throw new \DomainException(__('expense-claims::ec.claim_after_debt_date', ['date' => $date]));
             }
             $orgId = (string) $locked->first()?->organization_id;
             $settings = Setting::forOrganization($orgId);
-            $debtAccount = fn (Claim $c): string => $c->person?->is_owner ? $settings->owner_debt_code : $settings->staff_debt_code;
-
-            $moved = $locked->filter(fn (Claim $c): bool => $c->liability_account_code !== $debtAccount($c))->values();
-            $entryId = null;
-            if ($moved->isNotEmpty()) {
-                $people = $moved->pluck('person_id')->unique()->count();
-                $entryId = $this->journal->book($orgId, new JournalEntryData(
-                    date: $date,
-                    reference: $this->accounts->uniqueReference($orgId, 'EC-DEBT-'.str_replace('-', '', $date)),
-                    description: $people === 1
-                        ? "Frais non remboursés au {$date} — dette envers {$moved->first()->person?->name}"
-                        : "Frais non remboursés au {$date} — dettes envers {$people} personnes",
-                    lines: $this->debtLines($orgId, $moved, $debtAccount),
-                ), $draft)->id;
-            }
 
             $records = new Collection;
             foreach ($locked->groupBy('person_id') as $group) {
                 $first = $group->first();
+                $account = $first->person?->is_owner ? $settings->owner_debt_code : $settings->staff_debt_code;
+                $lines = $this->debtLines($orgId, $group, $account);
+                $entryId = $lines === [] ? null : $this->journal->book($orgId, new JournalEntryData(
+                    date: $date,
+                    reference: $this->accounts->uniqueReference($orgId, 'EC-DEBT-'.str_replace('-', '', $date).'-'.EntryLines::tag((string) $first->person?->name)),
+                    description: "Frais non remboursés au {$date} — dette envers {$first->person?->name} ({$group->count()})",
+                    lines: $lines,
+                ), $draft)->id;
+
                 $debt = DebtRecord::withoutGlobalScopes()->create([
                     'organization_id' => $orgId,
                     'person_id' => $first->person_id,
                     'date' => $date,
                     'amount' => Money::sumAmounts($group->map(fn (Claim $c): array => ['amount' => (string) $c->total])->values()->all()),
-                    'account_code' => $debtAccount($first),
-                    'journal_entry_id' => $moved->contains('person_id', $first->person_id) ? $entryId : null,
+                    'account_code' => $account,
+                    'journal_entry_id' => $entryId,
                     'notes' => $notes,
                 ]);
                 Claim::withoutGlobalScopes()->whereIn('id', $group->modelKeys())->update([
@@ -140,7 +136,7 @@ final class Debts
             $accountCode ??= Setting::forOrganization($orgId)->bank_account_code;
             $entry = $this->journal->book($orgId, new JournalEntryData(
                 date: $date,
-                reference: $this->accounts->uniqueReference($orgId, 'EC-DEBT-PAY-'.str_replace('-', '', $date)),
+                reference: $this->accounts->uniqueReference($orgId, 'EC-DEBT-PAY-'.str_replace('-', '', $date).'-'.EntryLines::tag((string) $debt->person?->name)),
                 description: "Remboursement dette — {$debt->person?->name}",
                 lines: [
                     new JournalLineData($this->accounts->id($orgId, $debt->account_code), $amount, '0', "Dette du {$debt->date->toDateString()}"),
@@ -160,24 +156,25 @@ final class Debts
      */
     private function recordLines(string $orgId, DebtRecord $debt, ?Collection $claims = null): array
     {
-        $claims ??= Claim::withoutGlobalScopes()->where('debt_record_id', $debt->id)->get()->load('person');
-        $moved = $claims->filter(fn (Claim $c): bool => $c->liability_account_code !== $debt->account_code)->values();
+        $claims ??= Claim::withoutGlobalScopes()->where('debt_record_id', $debt->id)->get();
 
-        return $this->debtLines($orgId, $moved, fn (): string => $debt->account_code);
+        return $this->debtLines($orgId, $claims->load(['lines', 'person']), $debt->account_code);
     }
 
     /**
-     * Dr each claim's liability · Cr the debt account, per person.
+     * Dr the cost of each claim · Cr the debt account (claims booked earlier
+     * on the debt account itself are left out: nothing moves).
      *
-     * @param  Collection<int, Claim>  $claims
-     * @param  callable(Claim): string  $debtAccount
+     * @param  Collection<int, Claim>  $claims  with lines and person loaded
      * @return list<JournalLineData>
      */
-    private function debtLines(string $orgId, Collection $claims, callable $debtAccount): array
+    private function debtLines(string $orgId, Collection $claims, string $debtAccount): array
     {
-        return [
-            ...$this->lines->perPerson($orgId, $claims, fn (Claim $c): string => (string) $c->liability_account_code, 'debit'),
-            ...$this->lines->perPerson($orgId, $claims, $debtAccount, 'credit'),
+        $moved = $claims->filter(fn (Claim $c): bool => $c->liability_account_code !== $debtAccount)->values();
+
+        return $moved->isEmpty() ? [] : [
+            ...$this->lines->costs($orgId, $moved, 'debit'),
+            ...$this->lines->perPerson($orgId, $moved, fn (): string => $debtAccount, 'credit'),
         ];
     }
 
