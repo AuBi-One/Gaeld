@@ -17,6 +17,7 @@ use App\Support\Plugins\PluginNavigation;
 use Illuminate\Validation\ValidationException;
 use PHPUnit\Framework\Attributes\Test;
 use Plugins\ExpenseClaims\Models\Claim;
+use Plugins\ExpenseClaims\Models\DebtRecord;
 use Plugins\ExpenseClaims\Models\Distance;
 use Plugins\ExpenseClaims\Models\Person;
 use Plugins\ExpenseClaims\Models\Place;
@@ -49,7 +50,19 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
             'lines' => $lines,
         ]);
 
-        return $approve ? app(Claims::class)->approve($claim)->fresh() : $claim;
+        if ($approve) {
+            app(Claims::class)->approve($claim);
+        }
+
+        return $approve ? $claim->fresh() : $claim;
+    }
+
+    /** @return DebtRecord the person's debt record for their approved claims up to $date */
+    private function convert(Person $person, string $date): DebtRecord
+    {
+        $claims = Claim::where('person_id', $person->id)->where('status', Claim::STATUS_APPROVED)->whereDate('date', '<=', $date)->get();
+
+        return app(Debts::class)->convert($claims, $date)->sole();
     }
 
     /** @return array<string, string> account code => balance (debit - credit) */
@@ -140,7 +153,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
             'employee_id' => $this->employee->id,
             'reimbursement_item_ids' => ['claim:'.$claim->id],
         ]])->first();
-        app(Claims::class)->payByBank($claim, '2026-03-20');
+        app(Claims::class)->pay($claim, '2026-03-20');
 
         $this->expectException(\DomainException::class);
         app(PostPayrollAction::class)->execute($slip);
@@ -153,7 +166,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
         $this->claim($owner, '2025-11-10', [['type' => 'km', 'km' => '100']]); // 2025 → 0.70
         $this->claim($owner, '2026-01-05', [['type' => 'meal', 'amount' => '20.00']]);
 
-        $debt = app(Debts::class)->convert($owner, '2025-12-31');
+        $debt = $this->convert($owner, '2025-12-31');
 
         $this->assertSame('70.00', (string) $debt->amount);
         $this->assertSame('2560', $debt->account_code);
@@ -162,7 +175,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
         $this->assertSame('-70.00', $balances['2560']);
         $this->assertTrue(JournalEntry::where('reference', 'like', 'EC-DEBT-20251231%')->whereDate('date', '2025-12-31')->exists());
 
-        app(Debts::class)->repayByBank($debt->load('repayments'), '2026-02-01', '50.00');
+        app(Debts::class)->repay($debt, '2026-02-01', '50.00');
         $this->assertSame('20.00', $debt->fresh()->load('repayments')->remaining());
         $this->assertSame('-20.00', $this->balances()['2560']);
     }
@@ -172,7 +185,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
     {
         $owner = $this->person(owner: true, employee: false);
         $claim = $this->claim($owner, '2025-11-10', [['type' => 'meal', 'amount' => '20.00']]);
-        $debt = app(Debts::class)->convert($owner, '2025-12-31');
+        $debt = $this->convert($owner, '2025-12-31');
 
         app(Debts::class)->cancel($debt);
 
@@ -188,7 +201,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
         $this->claim($person, '2025-11-10', [['type' => 'meal', 'amount' => '20.00']]);
         $before = JournalEntry::count();
 
-        $debt = app(Debts::class)->convert($person, '2025-12-31');
+        $debt = $this->convert($person, '2025-12-31');
 
         $this->assertNull($debt->journal_entry_id);
         $this->assertSame($before, JournalEntry::count());
@@ -226,7 +239,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
 
         $this->assertSame(['expense-claims.drafts', 'expense-claims.unpaid'], array_column($findings, 'key'));
         $this->assertStringContainsString('30.00', $findings[1]['message']);
-        $this->assertSame('/expense-balances?date=2025-12-31', $findings[1]['action_url']);
+        $this->assertSame('/expense-balances?status=approved&to=2025-12-31', $findings[1]['action_url']);
     }
 
     #[Test]
@@ -242,19 +255,28 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
                 ['type' => 'km', 'km' => '42', 'round_trip' => false],
                 ['type' => 'meal', 'amount' => '28.00'],
             ],
-        ])->assertRedirect()->assertSessionHasNoErrors();
+        ])->assertRedirect('/expense-balances')->assertSessionHasNoErrors(); // someone else's claim: back to the balances
 
         $claim = Claim::firstOrFail();
         $this->assertSame('59.50', (string) $claim->total); // 42 × 0.75 = 31.50 + 28
 
         $this->actAsOrg()->post("/expense-claims/{$claim->id}/approve")->assertRedirect();
         $this->assertSame(Claim::STATUS_APPROVED, $claim->fresh()->status);
+        $this->assertSame($this->user->id, $claim->fresh()->approved_by);
+        $this->assertNotNull($claim->fresh()->approved_at);
 
         $this->actAsOrg()->get('/expense-claims')
             ->assertOk()
             ->assertInertia(fn ($page) => $page->component('ExpenseClaims/Index', false)
-                ->where('openCount', 1)
+                ->where('hasPerson', false) // the owner's own claims only; Anna's are not listed
+                ->where('claims.total', 0)
                 ->where('translations.ec_nav_claims', 'Expense claims'));
+
+        $this->actAsOrg()->get('/expense-balances')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->component('ExpenseClaims/Balances', false)
+                ->where('claims.0.id', $claim->id)
+                ->where('people.0.approved_total', '59.50'));
 
         $this->actAsOrg()->get('/payroll/run')
             ->assertOk()
@@ -288,7 +310,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
             'reimbursement_item_ids' => ['claim:'.$claim->id],
         ]])->first();
         $items = $slip->adjustments['reimbursement_items'];
-        app(Claims::class)->payByBank($claim, '2026-03-20');
+        app(Claims::class)->pay($claim, '2026-03-20');
 
         $this->expectException(\DomainException::class);
         app(ReimbursementSourceInterface::class)->settle($slip, $items);

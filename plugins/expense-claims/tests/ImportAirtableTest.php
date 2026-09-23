@@ -148,6 +148,43 @@ class ImportAirtableTest extends ExpenseClaimsTestCase
         $debt = DebtRecord::sole();
         $this->assertSame('130.00', (string) $debt->amount); // 100 km × 0.70 + 20 + 40 × 1, not Airtable's 135
         $this->assertSame('2025-12-31', $debt->date->toDateString());
-        $this->assertSame(44, JournalEntry::count()); // 43 approvals + 1 transfer to the debt account
+        // Approvals grouped per month (2025-03, 2025-04, 2025-06, 2026-02) + one transfer to the debt account.
+        $this->assertSame(5, JournalEntry::count());
+        $this->assertSame(1, JournalEntry::where('reference', 'like', 'EC-DEBT-%')->count());
+        $this->assertSame(1, JournalEntry::where('reference', 'EC-APP-202506')->count()); // 40 claims, one entry
+        $this->assertSame(0, JournalEntry::where('is_posted', false)->count());
+    }
+
+    #[Test]
+    public function report_shows_the_gald_status_and_draft_writes_unposted_entries(): void
+    {
+        Person::create(['organization_id' => $this->org->id, 'name' => 'Alice', 'is_owner' => true]);
+        Person::create(['organization_id' => $this->org->id, 'name' => 'Bob', 'is_owner' => true]);
+        Place::create(['organization_id' => $this->org->id, 'kind' => 'hq', 'label' => 'Bureau']);
+        $employees = $this->file('emp', [['id' => 'recA', 'fields' => ['Employé' => 'Alice']], ['id' => 'recB', 'fields' => ['Employé' => 'Bob']]]);
+        $claims = $this->file('rep', [
+            ['id' => 'recR1', 'fields' => ['Date' => '2025-03-01', 'Qui' => ['recA'], 'Type' => 'Repas', 'Titre' => 'X', 'Montant' => 10.0, 'Montant final' => 10.0, 'Statut' => 'Payé']],
+            ['id' => 'recR2', 'fields' => ['Date' => '2025-03-05', 'Qui' => ['recB'], 'Type' => 'Repas', 'Titre' => 'Y', 'Montant' => 20.0, 'Montant final' => 20.0, 'Statut' => 'Payé']],
+            ['id' => 'recR3', 'fields' => ['Date' => '2026-02-01', 'Qui' => ['recA'], 'Type' => 'Repas', 'Titre' => 'Z', 'Montant' => 30.0, 'Montant final' => 30.0, 'Statut' => 'A payer']],
+            ['id' => 'recR4', 'fields' => ['Date' => '2026-03-01', 'Qui' => ['recB'], 'Type' => 'Repas', 'Titre' => 'W', 'Montant' => 5.0, 'Montant final' => 5.0, 'Statut' => 'Payé']],
+        ]);
+        $report = sys_get_temp_dir().'/ec-report-'.uniqid().'.md';
+        $args = ['file' => $claims, '--employees' => $employees, '--org' => $this->org->id, '--book' => true, '--debt-date' => '2025-12-31', '--report' => $report];
+
+        $this->artisan('expense-claims:import-airtable', $args)->assertSuccessful(); // dry run
+        $rows = array_values(array_filter(file($report, FILE_IGNORE_NEW_LINES), fn (string $l): bool => str_starts_with($l, '| 20')));
+        $status = array_map(fn (string $l): string => trim(explode('|', $l)[6]), $rows);
+        $this->assertSame(['debt', 'debt', 'approved', 'paid'], $status);
+        $this->assertSame('Payé', trim(explode('|', $rows[0])[8]));
+
+        $this->artisan('expense-claims:import-airtable', $args + ['--commit' => true, '--draft' => true])->assertSuccessful();
+
+        // One approval entry for March 2025 (two people), one for February 2026, one debt entry for both people.
+        $this->assertSame(3, JournalEntry::count());
+        $this->assertSame(3, JournalEntry::where('is_posted', false)->count());
+        $this->assertSame(2, DebtRecord::count());
+        $this->assertSame(1, DebtRecord::query()->distinct()->count('journal_entry_id'));
+        $this->assertSame(Claim::STATUS_DEBT, Claim::where('external_ref', 'recR2')->value('status'));
+        $this->assertNotNull(Claim::where('external_ref', 'recR3')->value('approved_at'));
     }
 }

@@ -25,7 +25,9 @@ Route::middleware(['web', 'auth', 'verified', 'org', 'org-2fa', 'subscription'])
 
     Route::prefix('expense-balances')->name('expense-balances.')->group(function (): void {
         Route::get('/', [BalanceController::class, 'index'])->name('index');
-        Route::post('/people/{person}/convert', [BalanceController::class, 'convert'])->whereUuid('person')->name('convert');
+        Route::post('/approve', [BalanceController::class, 'approve'])->name('approve');
+        Route::post('/pay', [BalanceController::class, 'pay'])->name('pay');
+        Route::post('/debt', [BalanceController::class, 'debt'])->name('debt');
         Route::delete('/debts/{debt}', [BalanceController::class, 'cancel'])->whereUuid('debt')->name('cancel');
         Route::post('/debts/{debt}/repay', [BalanceController::class, 'repay'])->whereUuid('debt')->name('repay');
     });

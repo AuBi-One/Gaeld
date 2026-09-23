@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { router, useForm, Link } from '@inertiajs/vue3'
 import AppLayout from '@/Components/AppLayout.vue'
 import Card from '@/Components/UI/Card.vue'
@@ -12,6 +12,7 @@ import Breadcrumb from '@/Components/UI/Breadcrumb.vue'
 import ConfirmDialog from '@/Components/UI/ConfirmDialog.vue'
 import Modal from '@/Components/UI/Modal.vue'
 import FormInput from '@/Components/UI/FormInput.vue'
+import FormSelect from '@/Components/UI/FormSelect.vue'
 import { useTranslations } from '@/lib/useTranslations'
 import { useFormatters } from '@/lib/useFormatters'
 import { Check, Landmark, Paperclip, Pencil, Trash2, Undo2 } from 'lucide-vue-next'
@@ -22,14 +23,24 @@ const { formatCurrency, formatDate } = useFormatters()
 const props = defineProps({
   claim: { type: Object, required: true },
   entries: { type: Array, default: () => [] },
+  from: { type: String, default: 'claims' },
+  accounts: { type: Array, default: () => [] },
+  defaultAccount: { type: String, default: '' },
   canManage: { type: Boolean, default: false },
+  canEdit: { type: Boolean, default: false },
+  canAttach: { type: Boolean, default: false },
 })
+
+const back = computed(() => props.from === 'balances'
+  ? { label: t('ec_nav_balances'), href: '/expense-balances' }
+  : { label: t('ec_title_claims'), href: '/expense-claims' })
+const accountOptions = computed(() => props.accounts.map(a => ({ value: a.code, label: `${a.code} ${a.name}` })))
 
 const statusVariant = { draft: 'secondary', approved: 'warning', settled: 'success', debt: 'info' }
 const busy = ref(false)
 const confirmDelete = ref(false)
 const payOpen = ref(false)
-const payForm = useForm({ date: new Date().toISOString().slice(0, 10) })
+const payForm = useForm({ date: new Date().toISOString().slice(0, 10), account_code: props.defaultAccount })
 const fileInput = ref(null)
 
 function act(action) {
@@ -64,7 +75,7 @@ function lineLabel(line) {
     <Breadcrumb
       :items="[
         { label: t('expenses'), href: '/expenses' },
-        { label: t('ec_title_claims'), href: '/expense-claims' },
+        back,
         { label: claim.reference },
       ]"
       class="mb-4"
@@ -80,7 +91,15 @@ function lineLabel(line) {
                 {{ claim.person }} · {{ formatDate(claim.date) }}
                 <span v-if="claim.source === 'airtable'"> · {{ t('ec_migrated') }}</span>
               </p>
-              <p v-if="claim.settled_on" class="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+              <p v-if="claim.approved_at" class="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                {{ claim.approved_by
+                  ? t('ec_approved_by', { name: claim.approved_by, date: formatDate(claim.approved_at) })
+                  : t(claim.source === 'airtable' ? 'ec_approved_by_migration' : 'ec_approved_on', { date: formatDate(claim.approved_at) }) }}
+              </p>
+              <p v-if="claim.debt" class="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                {{ t('ec_in_debt_record', { date: formatDate(claim.debt.date), remaining: formatCurrency(claim.debt.remaining) }) }}
+              </p>
+              <p v-else-if="claim.settled_on" class="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
                 {{ t('ec_paid_on', { date: formatDate(claim.settled_on), via: t(`ec_via_${claim.settled_via}`) }) }}
                 <Link v-if="claim.salary_slip_id" :href="`/payroll/salary-slips/${claim.salary_slip_id}`" class="ml-1 text-[hsl(var(--primary))] underline">{{ t('salary_slip') }}</Link>
               </p>
@@ -91,17 +110,19 @@ function lineLabel(line) {
             </div>
           </div>
         </CardHeader>
-        <CardContent v-if="canManage" class="flex flex-wrap gap-2">
+        <CardContent v-if="canManage || canEdit" class="flex flex-wrap gap-2">
           <template v-if="claim.status === 'draft'">
-            <Button :loading="busy" @click="act('approve')"><Check class="mr-2 h-4 w-4" />{{ t('ec_approve') }}</Button>
-            <Button as="a" :href="`/expense-claims/${claim.id}/edit`" variant="outline"><Pencil class="mr-2 h-4 w-4" />{{ t('edit') }}</Button>
-            <Button variant="ghost" @click="confirmDelete = true"><Trash2 class="mr-2 h-4 w-4" />{{ t('delete') }}</Button>
+            <Button v-if="canManage" :loading="busy" @click="act('approve')"><Check class="mr-2 h-4 w-4" />{{ t('ec_approve') }}</Button>
+            <template v-if="canEdit">
+              <Button as="a" :href="`/expense-claims/${claim.id}/edit`" variant="outline"><Pencil class="mr-2 h-4 w-4" />{{ t('edit') }}</Button>
+              <Button variant="ghost" @click="confirmDelete = true"><Trash2 class="mr-2 h-4 w-4" />{{ t('delete') }}</Button>
+            </template>
           </template>
-          <template v-else-if="claim.status === 'approved'">
+          <template v-else-if="canManage && claim.status === 'approved'">
             <Button variant="outline" @click="payOpen = true"><Landmark class="mr-2 h-4 w-4" />{{ t('ec_pay_bank') }}</Button>
             <Button variant="ghost" :loading="busy" @click="act('unapprove')"><Undo2 class="mr-2 h-4 w-4" />{{ t('ec_unapprove') }}</Button>
           </template>
-          <Button v-else-if="claim.status === 'settled' && claim.settled_via === 'bank'" variant="ghost" :loading="busy" @click="act('cancel-bank')">
+          <Button v-else-if="canManage && claim.status === 'settled' && claim.settled_via === 'bank'" variant="ghost" :loading="busy" @click="act('cancel-bank')">
             <Undo2 class="mr-2 h-4 w-4" />{{ t('ec_cancel_bank') }}
           </Button>
         </CardContent>
@@ -157,7 +178,7 @@ function lineLabel(line) {
             >
               <Paperclip class="h-4 w-4" />{{ file.name }}
             </a>
-            <template v-if="canManage">
+            <template v-if="canAttach">
               <input ref="fileInput" type="file" accept=".pdf,.jpg,.jpeg,.png,.heic" class="hidden" @change="upload" />
               <Button variant="outline" size="sm" @click="fileInput?.click()"><Paperclip class="mr-2 h-4 w-4" />{{ t('ec_attach') }}</Button>
             </template>
@@ -174,7 +195,7 @@ function lineLabel(line) {
               :href="`/accounting/journal-entries/${entry.id}`"
               class="block text-[hsl(var(--primary))] hover:underline"
             >
-              {{ entry.reference }} · {{ formatDate(entry.date) }}
+              {{ entry.reference }} · {{ formatDate(entry.date) }}<span v-if="!entry.is_posted"> · {{ t('ec_entry_draft') }}</span>
             </Link>
             <p v-if="claim.notes" class="whitespace-pre-line pt-2">{{ claim.notes }}</p>
           </CardContent>
@@ -185,6 +206,7 @@ function lineLabel(line) {
     <Modal :open="payOpen" :title="t('ec_pay_bank')" size="sm" @close="payOpen = false">
       <form class="space-y-4" @submit.prevent="pay">
         <FormInput v-model="payForm.date" id="ec-payForm-date" type="date" :label="t('ec_payment_date')" :error="payForm.errors.date" required />
+        <FormSelect v-model="payForm.account_code" id="ec-payForm-account" :label="t('ec_pay_account')" :options="accountOptions" :error="payForm.errors.account_code" required />
         <div class="flex justify-end gap-2">
           <Button type="button" variant="outline" @click="payOpen = false">{{ t('cancel') }}</Button>
           <Button type="submit" :loading="payForm.processing">{{ t('ec_confirm') }}</Button>

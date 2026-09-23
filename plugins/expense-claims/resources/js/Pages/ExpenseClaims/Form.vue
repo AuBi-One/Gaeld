@@ -25,6 +25,8 @@ const props = defineProps({
   rates: { type: Array, default: () => [] },
   routingEnabled: { type: Boolean, default: false },
   defaultPersonId: { type: String, default: null },
+  // Managers may enter a claim for someone else; others always claim for themselves.
+  canChoosePerson: { type: Boolean, default: false },
 })
 
 const lineTypes = ['km', 'meal', 'accommodation', 'transport', 'other']
@@ -164,7 +166,11 @@ const lineError = (index, field) => form.errors[`lines.${index}.${field}`]
           <CardTitle>{{ claim ? `${t('ec_edit_claim')} ${claim.reference}` : t('ec_new_claim') }}</CardTitle>
         </CardHeader>
         <CardContent class="grid gap-4 sm:grid-cols-2">
-          <FormSelect v-model="form.person_id" id="ec-form-person-id" :label="t('ec_person')" :options="personOptions" :error="form.errors.person_id" :placeholder="t('ec_person')" required />
+          <FormSelect v-if="canChoosePerson" v-model="form.person_id" id="ec-form-person-id" :label="t('ec_person')" :options="personOptions" :error="form.errors.person_id" :placeholder="t('ec_person')" required />
+          <div v-else class="text-sm">
+            <p class="font-medium">{{ t('ec_person') }}</p>
+            <p class="mt-2">{{ people.find(p => p.id === form.person_id)?.name ?? '' }}</p>
+          </div>
           <FormInput v-model="form.date" id="ec-form-date" type="date" :label="t('date')" :error="form.errors.date" required />
           <FormInput v-model="form.title" id="ec-form-title" :label="t('ec_title')" :error="form.errors.title" class="sm:col-span-2" required />
           <FormTextarea v-model="form.notes" id="ec-form-notes" :label="t('ec_notes')" :error="form.errors.notes" :rows="2" class="sm:col-span-2" />

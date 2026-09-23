@@ -3,6 +3,8 @@
 namespace Plugins\ExpenseClaims\Http\Controllers;
 
 use App\Domains\Accounting\Models\JournalEntry;
+use App\Domains\Organizations\Enums\Permission;
+use App\Support\Money;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -12,8 +14,10 @@ use Illuminate\Validation\Rule;
 use Inertia\Response;
 use Plugins\ExpenseClaims\Models\Claim;
 use Plugins\ExpenseClaims\Models\ClaimLine;
+use Plugins\ExpenseClaims\Models\DebtRecord;
 use Plugins\ExpenseClaims\Models\Person;
 use Plugins\ExpenseClaims\Models\Place;
+use Plugins\ExpenseClaims\Models\Setting;
 use Plugins\ExpenseClaims\Models\VehicleRate;
 use Plugins\ExpenseClaims\Services\Claims;
 use Plugins\ExpenseClaims\Services\Distances;
@@ -24,73 +28,83 @@ class ClaimController extends PluginController
 {
     public function __construct(private Claims $claims, private Distances $distances) {}
 
+    /** The user's own claims and balances (§8.2). */
     public function index(Request $request): Response
     {
-        $this->authorizeView();
+        abort_unless($this->allows(Permission::ExpensesCreate) || $this->allows(Permission::ExpensesViewOwn) || $this->allows(Permission::ExpensesView), 403);
         $status = $request->string('status')->toString();
-        $personId = $request->string('person_id')->toString();
+        $personId = $this->ownPersonId();
 
-        $claims = Claim::query()
-            ->with('person:id,name')
+        // No person linked to the account: an empty list (nil UUID matches nothing).
+        $key = $personId ?? '00000000-0000-0000-0000-000000000000';
+        $own = Claim::query()->where('person_id', $key);
+        $claims = (clone $own)
+            ->with('debtRecord.repayments')
             ->when($status !== '', fn ($q) => $q->where('status', $status))
-            ->when($personId !== '', fn ($q) => $q->where('person_id', $personId))
             ->orderByDesc('date')
             ->orderByDesc('number')
             ->paginate(25)
             ->withQueryString()
-            ->through(fn (Claim $c): array => [
-                'id' => $c->id,
-                'reference' => $c->reference(),
-                'date' => $c->date->toDateString(),
-                'person' => $c->person?->name,
-                'title' => $c->title,
-                'status' => $c->status,
-                'settled_via' => $c->settled_via,
-                'total' => (string) $c->total,
-            ]);
+            ->through(fn (Claim $c): array => $this->row($c));
 
-        $open = Claim::query()->where('status', Claim::STATUS_APPROVED);
+        $byStatus = (clone $own)->selectRaw('status, count(*) as n, coalesce(sum(total), 0) as total')->groupBy('status')->get()->keyBy('status');
+        $tile = fn (string $s): array => ['count' => (int) ($byStatus[$s]->n ?? 0), 'total' => Money::normalize((string) ($byStatus[$s]->total ?? '0'))];
+        $debts = DebtRecord::query()->where('person_id', $key)->with('repayments')->get();
 
         return $this->page('ExpenseClaims/Index', [
             'claims' => $claims,
-            'filters' => ['status' => $status, 'person_id' => $personId],
-            'people' => Person::query()->orderBy('name')->get(['id', 'name']),
-            'openTotal' => (string) $open->sum('total'),
-            'openCount' => $open->count(),
+            'filters' => ['status' => $status],
+            'hasPerson' => $personId !== null,
+            'balances' => [
+                'draft' => $tile(Claim::STATUS_DRAFT),
+                'approved' => $tile(Claim::STATUS_APPROVED),
+                'debt' => [
+                    'count' => $debts->filter(fn (DebtRecord $d): bool => Money::isPositive($d->remaining()))->count(),
+                    'total' => Money::sumAmounts($debts->map(fn (DebtRecord $d): array => ['amount' => $d->remaining()])->values()->all()),
+                ],
+            ],
         ]);
     }
 
-    public function create(): Response
+    public function create(): Response|RedirectResponse
     {
-        $this->authorizeWrite();
+        $this->authorizeCreate();
+        if ($this->ownPersonId() === null && ! $this->canManage()) {
+            return redirect('/expense-claims')->with('error', __('expense-claims::ec.no_person'));
+        }
 
         return $this->page('ExpenseClaims/Form', $this->formProps(null));
     }
 
     public function store(Request $request): RedirectResponse
     {
-        $this->authorizeWrite();
+        $this->authorizeCreate();
         $claim = $this->claims->saveDraft($this->orgId(), $this->validated($request));
 
-        return redirect("/expense-claims/{$claim->id}")->with('success', __('expense-claims::ec.saved'));
+        return $this->backToList($claim)->with('success', __('expense-claims::ec.saved'));
     }
 
-    public function show(Claim $claim): Response
+    public function show(Request $request, Claim $claim): Response
     {
-        $this->authorizeView();
-        $claim->load(['person', 'lines.fromPlace', 'lines.toPlace']);
+        $this->authorizeSee($claim);
+        $claim->load(['person', 'lines.fromPlace', 'lines.toPlace', 'approver:id,name', 'debtRecord.repayments']);
 
         return $this->page('ExpenseClaims/Show', [
             'claim' => $this->present($claim),
+            'from' => $request->string('from')->toString() === 'balances' && $this->allows(Permission::ExpensesView) ? 'balances' : 'claims',
+            'canEdit' => $claim->isDraft() && $this->mayEdit($claim),
+            'canAttach' => $this->mayAttach($claim),
+            'accounts' => $this->canManage() ? $this->paymentAccounts() : [],
+            'defaultAccount' => Setting::forOrganization($this->orgId())->bank_account_code,
             'entries' => JournalEntry::query()
-                ->whereIn('id', array_filter([$claim->journal_entry_id, $claim->settlement_entry_id]))
-                ->get(['id', 'reference', 'date']),
+                ->whereIn('id', array_filter([$claim->journal_entry_id, $claim->settlement_entry_id, $claim->debtRecord?->journal_entry_id]))
+                ->get(['id', 'reference', 'date', 'is_posted']),
         ]);
     }
 
     public function edit(Claim $claim): Response|RedirectResponse
     {
-        $this->authorizeWrite();
+        abort_unless($this->mayEdit($claim), 403);
         if (! $claim->isDraft()) {
             return redirect("/expense-claims/{$claim->id}")->with('error', __('expense-claims::ec.only_draft_editable'));
         }
@@ -100,26 +114,27 @@ class ClaimController extends PluginController
 
     public function update(Request $request, Claim $claim): RedirectResponse
     {
-        $this->authorizeWrite();
-        $this->claims->saveDraft($this->orgId(), $this->validated($request), $claim);
+        abort_unless($this->mayEdit($claim), 403);
+        $claim = $this->claims->saveDraft($this->orgId(), $this->validated($request), $claim);
 
-        return redirect("/expense-claims/{$claim->id}")->with('success', __('expense-claims::ec.saved'));
+        return $this->backToList($claim)->with('success', __('expense-claims::ec.saved'));
     }
 
     public function destroy(Claim $claim): RedirectResponse
     {
-        $this->authorizeWrite();
+        abort_unless($this->mayEdit($claim), 403);
+        $own = $this->isOwn($claim);
         foreach ($this->claims->delete($claim) as $file) {
             Storage::disk('local')->delete($file['path']);
         }
 
-        return redirect('/expense-claims')->with('success', __('expense-claims::ec.deleted'));
+        return redirect($own ? '/expense-claims' : '/expense-balances')->with('success', __('expense-claims::ec.deleted'));
     }
 
-    public function approve(Claim $claim): RedirectResponse
+    public function approve(Request $request, Claim $claim): RedirectResponse
     {
         $this->authorizeWrite();
-        $this->claims->approve($claim);
+        $this->claims->approve($claim, $request->user()?->id);
 
         return back()->with('success', __('expense-claims::ec.approved'));
     }
@@ -135,8 +150,11 @@ class ClaimController extends PluginController
     public function payBank(Request $request, Claim $claim): RedirectResponse
     {
         $this->authorizeWrite();
-        $date = $request->validate(['date' => ['required', 'date_format:Y-m-d']])['date'];
-        $this->claims->payByBank($claim, $date);
+        $data = $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'],
+            'account_code' => ['nullable', 'string', Rule::in(array_column($this->paymentAccounts(), 'code'))],
+        ]);
+        $this->claims->pay($claim, $data['date'], $data['account_code'] ?? null);
 
         return back()->with('success', __('expense-claims::ec.paid'));
     }
@@ -144,14 +162,14 @@ class ClaimController extends PluginController
     public function cancelBank(Claim $claim): RedirectResponse
     {
         $this->authorizeWrite();
-        $this->claims->cancelBankPayment($claim);
+        $count = $this->claims->cancelPayment($claim);
 
-        return back()->with('success', __('expense-claims::ec.payment_cancelled'));
+        return back()->with('success', trans_choice('expense-claims::ec.payment_cancelled', $count, ['count' => $count]));
     }
 
     public function distance(Request $request): JsonResponse
     {
-        $this->authorizeWrite();
+        $this->authorizeCreate();
         $data = $request->validate(['from' => ['required', 'uuid'], 'to' => ['required', 'uuid', 'different:from']]);
         $from = Place::query()->whereKey($data['from'])->firstOrFail();
         $to = Place::query()->whereKey($data['to'])->firstOrFail();
@@ -165,7 +183,7 @@ class ClaimController extends PluginController
 
     public function attach(Request $request, Claim $claim): RedirectResponse
     {
-        $this->authorizeWrite();
+        abort_unless($this->mayAttach($claim), 403);
         $file = $request->validate(['file' => ['required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,heic']])['file'];
         $path = $file->store("expense-claims/{$claim->organization_id}/{$claim->id}", 'local');
         $claim->update(['attachments' => [...($claim->attachments ?? []), ['path' => $path, 'name' => $file->getClientOriginalName()]]]);
@@ -175,7 +193,7 @@ class ClaimController extends PluginController
 
     public function attachment(Claim $claim, int $index): StreamedResponse
     {
-        $this->authorizeView();
+        $this->authorizeSee($claim);
         $file = ($claim->attachments ?? [])[$index] ?? abort(404);
 
         return Storage::disk('local')->download($file['path'], $file['name']);
@@ -186,6 +204,11 @@ class ClaimController extends PluginController
      */
     private function validated(Request $request): array
     {
+        if (! $this->canManage()) {
+            // Without `expenses.approve`, a claim is always the user's own.
+            abort_if($this->ownPersonId() === null, 403);
+            $request->merge(['person_id' => $this->ownPersonId()]);
+        }
         /** @var array{person_id: string, date: string, title: string, notes?: ?string, lines: list<array<string, mixed>>} $data */
         $data = $request->validate([
             'person_id' => ['required', 'uuid', Rule::exists('ec_people', 'id')->where('organization_id', $this->orgId())],
@@ -212,44 +235,57 @@ class ClaimController extends PluginController
      */
     private function formProps(?Claim $claim): array
     {
+        $own = $this->ownPersonId();
+        $manage = $this->canManage();
+        $people = Person::query()->orderBy('name')->when(! $manage, fn ($q) => $q->whereKey($own))->get(['id', 'name', 'home_place_id']);
+        $ownHome = $people->firstWhere('id', $own)?->home_place_id;
+
         return [
             'claim' => $claim ? $this->present($claim) : null,
-            'people' => Person::query()->orderBy('name')->get(['id', 'name', 'home_place_id']),
-            'defaultPersonId' => $this->currentPersonId(),
-            'places' => Place::query()->ordered()->get(['id', 'kind', 'label', 'city', 'lat', 'lon']),
+            'people' => $people,
+            'defaultPersonId' => $own,
+            'canChoosePerson' => $manage,
+            // Other people's homes are only shown to managers.
+            'places' => Place::query()->ordered()
+                ->when(! $manage, fn ($q) => $q->where(fn ($q) => $q->where('kind', '!=', 'home')->orWhere('id', $ownHome)))
+                ->get(['id', 'kind', 'label', 'city', 'lat', 'lon']),
             'rates' => $this->rates()->get(['vehicle_type', 'valid_from', 'valid_to', 'rate_per_km']),
             'routingEnabled' => $this->distances->isConfigured(),
         ];
     }
 
-    /**
-     * The person record of the logged-in user: linked to their account,
-     * through their employee record, or an employee with their e-mail address.
-     */
-    private function currentPersonId(): ?string
+    /** The claim's person may change a draft (and add receipts); managers any claim. */
+    private function mayEdit(Claim $claim): bool
     {
-        $user = request()->user();
-        if ($user === null) {
-            return null;
-        }
+        return $this->canManage() || ($this->isOwn($claim) && $this->allows(Permission::ExpensesCreate));
+    }
 
-        $linked = Person::query()->where('user_id', $user->id)->value('id');
-        if ($linked !== null) {
-            return $linked;
-        }
+    /** Receipts: managers on any claim, the claim's person on their drafts. */
+    private function mayAttach(Claim $claim): bool
+    {
+        return $this->canManage() || ($claim->isDraft() && $this->mayEdit($claim));
+    }
 
-        // Fallbacks only among people not linked to another account, and only when unambiguous.
-        foreach ([
-            fn ($q) => $q->where('user_id', $user->id),
-            fn ($q) => $q->whereRaw('lower(email) = ?', [mb_strtolower((string) $user->email)]),
-        ] as $employeeMatch) {
-            $ids = Person::query()->whereNull('user_id')->whereHas('employee', $employeeMatch)->limit(2)->pluck('id');
-            if ($ids->count() === 1) {
-                return (string) $ids->first();
-            }
-        }
+    private function backToList(Claim $claim): RedirectResponse
+    {
+        return redirect($this->isOwn($claim) ? '/expense-claims' : '/expense-balances');
+    }
 
-        return null;
+    /**
+     * @return array<string, mixed>
+     */
+    private function row(Claim $c): array
+    {
+        return [
+            'id' => $c->id,
+            'reference' => $c->reference(),
+            'date' => $c->date->toDateString(),
+            'title' => $c->title,
+            'status' => $c->status,
+            'settled_via' => $c->settled_via,
+            'debt_repaid' => $c->debtRecord !== null && ! Money::isPositive($c->debtRecord->remaining()),
+            'total' => (string) $c->total,
+        ];
     }
 
     /**
@@ -281,6 +317,12 @@ class ClaimController extends PluginController
             'settled_via' => $claim->settled_via,
             'settled_on' => $claim->settled_on?->toDateString(),
             'salary_slip_id' => $claim->salary_slip_id,
+            'approved_at' => $claim->approved_at?->toIso8601String(),
+            'approved_by' => $claim->approver?->name,
+            'debt' => $claim->debtRecord === null ? null : [
+                'date' => $claim->debtRecord->date->toDateString(),
+                'remaining' => $claim->debtRecord->remaining(),
+            ],
             'source' => $claim->source,
             'attachments' => collect($claim->attachments ?? [])->map(fn (array $f, int $i): array => ['index' => $i, 'name' => $f['name']])->values(),
             'lines' => $claim->lines->map(fn (ClaimLine $l): array => [
