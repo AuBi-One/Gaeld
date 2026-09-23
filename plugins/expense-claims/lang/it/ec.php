@@ -175,4 +175,7 @@ return [
     'claim_after_payment_date' => 'Solo le note datate fino al :date possono essere pagate in quella data.',
     'approved_on' => 'Approvata il :date',
     'booked_before_gald' => 'Questa nota è stata registrata prima di Gäld (migrazione): non può tornare in bozza.',
+    'journal_source_claims' => '{1} Nota spese :refs|[2,*] Note spese :refs',
+    'journal_source_debt' => 'Debito spese di :person (:date)',
+    'journal_source_repayment' => 'Rimborso di un debito spese (:date)',
 ];

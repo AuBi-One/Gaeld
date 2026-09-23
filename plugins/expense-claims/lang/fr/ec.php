@@ -175,4 +175,7 @@ return [
     'claim_after_payment_date' => 'Seules les notes datées jusqu\'au :date peuvent être payées à cette date.',
     'approved_on' => 'Approuvée le :date',
     'booked_before_gald' => 'Cette note a été comptabilisée avant Gäld (migration) : elle ne peut pas revenir en brouillon.',
+    'journal_source_claims' => '{1} Note de frais :refs|[2,*] Notes de frais :refs',
+    'journal_source_debt' => 'Dette de frais de :person (:date)',
+    'journal_source_repayment' => 'Remboursement d\'une dette de frais (:date)',
 ];

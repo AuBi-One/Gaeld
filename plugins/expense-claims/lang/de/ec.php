@@ -175,4 +175,7 @@ return [
     'claim_after_payment_date' => 'Nur Abrechnungen bis :date können an diesem Datum bezahlt werden.',
     'approved_on' => 'Genehmigt am :date',
     'booked_before_gald' => 'Diese Abrechnung wurde vor Gäld gebucht (Migration): sie kann nicht zurück in den Entwurf.',
+    'journal_source_claims' => '{1} Spesenabrechnung :refs|[2,*] Spesenabrechnungen :refs',
+    'journal_source_debt' => 'Spesenschuld von :person (:date)',
+    'journal_source_repayment' => 'Rückzahlung einer Spesenschuld (:date)',
 ];

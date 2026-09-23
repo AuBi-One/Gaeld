@@ -175,4 +175,7 @@ return [
     'claim_after_payment_date' => 'Only claims dated up to :date can be paid on that date.',
     'approved_on' => 'Approved on :date',
     'booked_before_gald' => 'This claim was booked before Gäld (migration): it cannot go back to draft.',
+    'journal_source_claims' => '{1} Expense claim :refs|[2,*] Expense claims :refs',
+    'journal_source_debt' => 'Expense debt record of :person (:date)',
+    'journal_source_repayment' => 'Repayment of an expense debt (:date)',
 ];
