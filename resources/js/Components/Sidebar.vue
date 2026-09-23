@@ -23,6 +23,7 @@ import {
   Settings,
   Sun,
   Moon,
+  FilePen,
 } from 'lucide-vue-next'
 import { useTranslations } from '@/lib/useTranslations'
 import { usePermissions } from '@/lib/usePermissions'
@@ -85,22 +86,45 @@ function isExpanded(item) {
 const businessType = computed(() => currentOrg.value?.business_type)
 const currentRole = computed(() => organizations.value.find(org => org.id === currentOrg.value?.id)?.role)
 
-// Entries contributed by plugins, appended to the children of their parent group.
+// Icons a plugin may name for a top-level entry (default: FileText).
+const pluginIcons = { FileText, FilePen, Receipt, Briefcase, Package, Users, BookOpen, BarChart3, Landmark }
+
+// Plugin entries have their own text; core entries are translated from their key.
+function label(item) {
+  return item.text ?? t(item.key)
+}
+
+// Entries contributed by plugins. A parent is either a group key (the entry is appended
+// to that group's children), `after:<key>` (a top-level entry right after that top-level
+// item, shown only when it is), or a section label such as `nav_activity` (a top-level
+// entry at the end of that section).
 function withPluginNavigation(items) {
   const pluginItems = (page.props.pluginNavigation ?? []).filter(entry => !entry.permission || can(entry.permission))
   if (!pluginItems.length) return items
 
-  // An entry goes to the first of its parent groups that is shown with children.
+  // An entry goes to the first of its parents that is shown.
   const groups = new Set(items.filter(item => item.children).map(item => item.key))
-  const target = entry => (entry.parents ?? [entry.parent]).find(key => groups.has(key))
+  const topKeys = new Set(items.filter(item => !item.type).map(item => `after:${item.key}`))
+  const sections = new Set(items.filter(item => item.type === 'group').map(item => item.label))
+  const target = entry => (entry.parents ?? [entry.parent]).find(key => groups.has(key) || topKeys.has(key) || sections.has(key))
+  const entriesFor = key => pluginItems.filter(entry => target(entry) === key)
+  const topLevel = key => entriesFor(key)
+    .map(entry => ({ key: `plugin:${entry.key}`, href: entry.href, text: entry.text, icon: pluginIcons[entry.icon] ?? FileText }))
 
-  return items.map(item => {
-    const extra = pluginItems
-      .filter(entry => target(entry) === item.key)
-      .map(entry => ({ key: entry.key, href: entry.href, text: entry.text }))
-
-    return extra.length ? { ...item, children: [...item.children, ...extra] } : item
+  const result = []
+  let section = null
+  items.forEach((item, index) => {
+    if (item.type === 'group') section = item.label
+    const extra = item.children && !item.type
+      ? entriesFor(item.key).map(entry => ({ key: entry.key, href: entry.href, text: entry.text }))
+      : []
+    result.push(extra.length ? { ...item, children: [...item.children, ...extra] } : item)
+    if (!item.type) result.push(...topLevel(`after:${item.key}`))
+    const next = items[index + 1]
+    if (section && (!next || next.type === 'group')) result.push(...topLevel(section))
   })
+
+  return result
 }
 
 const navigation = computed(() => withPluginNavigation(baseNavigation()))
@@ -393,22 +417,25 @@ function isGroupActive(item) {
           </div>
         </div>
 
-        <Tooltip v-else :content="collapsed ? t(item.key) : ''" side="right">
-          <Link
-            :href="item.href"
-            :aria-label="collapsed ? t(item.key) : undefined"
-            :aria-current="isActive(item.href) ? 'page' : undefined"
-            :class="[
-              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-              isActive(item.href)
-                ? 'bg-[hsl(var(--accent))] text-[hsl(var(--accent-foreground))]'
-                : 'text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))]',
-            ]"
-          >
-            <component :is="item.icon" class="h-4 w-4 shrink-0" />
-            <span v-if="!collapsed">{{ t(item.key) }}</span>
-          </Link>
-        </Tooltip>
+        <!-- One per row: consecutive top-level entries (e.g. from plugins) stack -->
+        <div v-else>
+          <Tooltip :content="collapsed ? label(item) : ''" side="right">
+            <Link
+              :href="item.href"
+              :aria-label="collapsed ? label(item) : undefined"
+              :aria-current="isActive(item.href) ? 'page' : undefined"
+              :class="[
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                isActive(item.href)
+                  ? 'bg-[hsl(var(--accent))] text-[hsl(var(--accent-foreground))]'
+                  : 'text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))]',
+              ]"
+            >
+              <component :is="item.icon" class="h-4 w-4 shrink-0" />
+              <span v-if="!collapsed">{{ label(item) }}</span>
+            </Link>
+          </Tooltip>
+        </div>
       </template>
 
       <!-- Billing (SaaS only) -->

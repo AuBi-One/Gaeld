@@ -27,6 +27,7 @@ class PluginExtensionPointsTest extends TestCase
     {
         app(PluginNavigation::class)->add('payroll', 'demo', 'app.payroll', '/payroll/demo', 'payroll.view');
         app(PluginNavigation::class)->add(['expenses', 'payroll'], 'demo2', 'app.expenses', '/demo2');
+        app(PluginNavigation::class)->add(['after:invoices', 'nav_activity'], 'demo3', 'app.invoices', '/demo3', 'invoicing.view', 'FilePen');
 
         $this->actAsOrg()->get('/payroll/employees')
             ->assertOk()
@@ -36,7 +37,10 @@ class PluginExtensionPointsTest extends TestCase
                 ->where('pluginNavigation.0.text', __('app.payroll'))
                 ->where('pluginNavigation.0.permission', 'payroll.view')
                 ->where('pluginNavigation.1.parent', 'expenses')
-                ->where('pluginNavigation.1.parents', ['expenses', 'payroll']));
+                ->where('pluginNavigation.1.parents', ['expenses', 'payroll'])
+                ->where('pluginNavigation.1.icon', null)
+                ->where('pluginNavigation.2.parents', ['after:invoices', 'nav_activity'])
+                ->where('pluginNavigation.2.icon', 'FilePen'));
     }
 
     public function test_tagged_closing_checks_reach_the_wizard(): void
