@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Starting point for new offers: subject, texts, validity and default lines.
+ * Starting point for new offers: subject, texts, default lines and the From/To layout.
  *
  * @property string $id
  * @property string $organization_id
@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $title
  * @property string|null $intro
  * @property string|null $closing
- * @property int $validity_days
+ * @property array<string, mixed>|null $layout
  * @property list<array{type: string, label: string|null, description: string, quantity: string|null, unit: string|null, unit_price: string|null}>|null $lines
  * @property bool $is_default
  */
@@ -25,10 +25,10 @@ class OfferTemplate extends Model
 
     protected $table = 'of_templates';
 
-    protected $fillable = ['organization_id', 'name', 'title', 'intro', 'closing', 'validity_days', 'lines', 'is_default'];
+    protected $fillable = ['organization_id', 'name', 'title', 'intro', 'closing', 'lines', 'layout', 'is_default'];
 
     protected function casts(): array
     {
-        return ['lines' => 'array', 'is_default' => 'boolean', 'validity_days' => 'integer'];
+        return ['lines' => 'array', 'layout' => 'array', 'is_default' => 'boolean'];
     }
 }

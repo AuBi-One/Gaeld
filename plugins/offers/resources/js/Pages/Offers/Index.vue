@@ -79,7 +79,7 @@ function applyFilter({ key, value }) {
       <template #cell-status="{ row, inLink }">
         <component :is="inLink ? 'span' : Link" v-bind="inLink ? {} : { href: `/offers/${row.id}` }" class="flex flex-wrap items-center gap-1">
           <Badge :variant="statusVariant[row.status] ?? 'secondary'">{{ t(`of_status_${row.status}`) }}</Badge>
-          <Badge v-if="row.invoice" variant="success">{{ t('of_invoiced') }}</Badge>
+          <Badge v-if="row.invoicing !== 'none'" :variant="row.invoicing === 'full' ? 'success' : 'warning'">{{ t(`of_invoicing_${row.invoicing}`) }}</Badge>
         </component>
       </template>
       <template #empty>

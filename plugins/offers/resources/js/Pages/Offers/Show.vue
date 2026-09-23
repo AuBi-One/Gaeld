@@ -54,6 +54,9 @@ const recipientLines = computed(() => {
   const r = props.offer.recipient ?? {}
   return [r.attention, r.email, r.address, [r.postal_code, r.city].filter(Boolean).join(' ')].filter(Boolean)
 })
+// Invoiced / remaining columns once the offer is accepted or has invoices.
+const tracking = computed(() => props.offer.status === 'accepted' || props.offer.invoices.length > 0)
+const hasLiveInvoice = computed(() => props.offer.invoices.some(i => i.status !== 'cancelled'))
 const qty = value => Number(value).toLocaleString('de-CH', { maximumFractionDigits: 2 })
 </script>
 
@@ -61,7 +64,6 @@ const qty = value => Number(value).toLocaleString('de-CH', { maximumFractionDigi
   <AppLayout :title="`${t('of_title_offers')} ${offer.number}`" help-page="invoices">
     <Breadcrumb
       :items="[
-        { label: t('invoices'), href: '/invoices' },
         { label: t('of_title_offers'), href: '/offers' },
         { label: offer.number },
       ]"
@@ -107,8 +109,8 @@ const qty = value => Number(value).toLocaleString('de-CH', { maximumFractionDigi
                 <Button variant="ghost" :loading="busy" @click="act('revert')"><Undo2 class="mr-2 h-4 w-4" />{{ t('of_action_revert') }}</Button>
               </template>
               <template v-else-if="offer.status === 'accepted'">
-                <Button v-if="!offer.invoice" :loading="busy" @click="act('invoice')"><FileText class="mr-2 h-4 w-4" />{{ t('of_action_invoice') }}</Button>
-                <Button v-if="!offer.invoice" variant="ghost" :loading="busy" @click="act('reopen')"><RotateCcw class="mr-2 h-4 w-4" />{{ t('of_action_reopen') }}</Button>
+                <Button v-if="offer.can_invoice" as="a" :href="`/offers/${offer.id}/invoice`"><FileText class="mr-2 h-4 w-4" />{{ t('of_action_invoice') }}</Button>
+                <Button v-if="!hasLiveInvoice" variant="ghost" :loading="busy" @click="act('reopen')"><RotateCcw class="mr-2 h-4 w-4" />{{ t('of_action_reopen') }}</Button>
               </template>
               <template v-else-if="offer.status === 'refused'">
                 <Button variant="outline" :loading="busy" @click="act('revise')"><Copy class="mr-2 h-4 w-4" />{{ t('of_action_revise') }}</Button>
@@ -118,7 +120,6 @@ const qty = value => Number(value).toLocaleString('de-CH', { maximumFractionDigi
             </div>
             <p v-if="canManage && offer.status === 'draft'" class="text-xs text-[hsl(var(--muted-foreground))]">{{ t('of_send_hint') }}</p>
             <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-              <Link v-if="offer.invoice" :href="`/invoices/${offer.invoice.id}`" class="text-[hsl(var(--primary))] hover:underline">{{ t('of_invoice_link', { number: offer.invoice.number }) }}</Link>
               <Link v-if="offer.supersedes" :href="`/offers/${offer.supersedes.id}`" class="text-[hsl(var(--primary))] hover:underline">{{ t('of_supersedes', { number: offer.supersedes.number }) }}</Link>
               <Link v-if="offer.superseded_by" :href="`/offers/${offer.superseded_by.id}`" class="text-[hsl(var(--primary))] hover:underline">{{ t('of_superseded_by', { number: offer.superseded_by.number }) }}</Link>
             </div>
@@ -146,25 +147,65 @@ const qty = value => Number(value).toLocaleString('de-CH', { maximumFractionDigi
                   <th class="px-4 py-2">{{ t('of_unit') }}</th>
                   <th class="px-4 py-2 text-right">{{ t('of_unit_price') }}</th>
                   <th class="px-4 py-2 text-right">{{ t('of_amount') }}</th>
+                  <template v-if="tracking">
+                    <th class="px-4 py-2 text-right">{{ t('of_invoiced_amount') }}</th>
+                    <th class="px-4 py-2 text-right">{{ t('of_remaining') }}</th>
+                  </template>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="(line, i) in offer.lines" :key="i" class="border-t border-[hsl(var(--border))]">
                   <td class="px-4 py-2 align-top">{{ line.label }}</td>
-                  <td class="whitespace-pre-line px-4 py-2" :class="line.type === 'text' ? 'italic' : ''" :colspan="line.type === 'text' ? 5 : 1">{{ line.description }}</td>
+                  <td class="whitespace-pre-line px-4 py-2" :class="line.type === 'text' ? 'italic' : ''" :colspan="line.type === 'text' ? (tracking ? 7 : 5) : 1">{{ line.description }}</td>
                   <template v-if="line.type === 'item'">
                     <td class="px-4 py-2 text-right font-mono align-top">{{ qty(line.quantity) }}</td>
                     <td class="px-4 py-2 align-top">{{ line.unit }}</td>
                     <td class="px-4 py-2 text-right font-mono align-top">{{ formatCurrency(line.unit_price, offer.currency) }}</td>
                     <td class="px-4 py-2 text-right font-mono align-top">{{ formatCurrency(line.amount, offer.currency) }}</td>
+                    <template v-if="tracking">
+                      <td class="px-4 py-2 text-right font-mono align-top">{{ formatCurrency(offer.balance[line.id]?.invoiced ?? 0, offer.currency) }}</td>
+                      <td class="px-4 py-2 text-right font-mono align-top">{{ formatCurrency(offer.balance[line.id]?.remaining ?? 0, offer.currency) }}</td>
+                    </template>
                   </template>
                 </tr>
               </tbody>
               <tfoot class="text-sm">
-                <tr class="border-t border-[hsl(var(--border))]"><td colspan="5" class="px-4 py-1 text-right">{{ t('of_subtotal') }}</td><td class="px-4 py-1 text-right font-mono">{{ formatCurrency(offer.subtotal, offer.currency) }}</td></tr>
-                <tr v-if="offer.vat_rate !== null"><td colspan="5" class="px-4 py-1 text-right">{{ t('of_vat') }} {{ Number(offer.vat_rate) }} %</td><td class="px-4 py-1 text-right font-mono">{{ formatCurrency(offer.vat_amount, offer.currency) }}</td></tr>
-                <tr class="font-semibold"><td colspan="5" class="px-4 py-2 text-right">{{ t('of_total') }}</td><td class="px-4 py-2 text-right font-mono">{{ formatCurrency(offer.total, offer.currency) }}</td></tr>
+                <tr class="border-t border-[hsl(var(--border))]"><td colspan="5" class="px-4 py-1 text-right">{{ t('of_subtotal') }}</td><td class="px-4 py-1 text-right font-mono">{{ formatCurrency(offer.subtotal, offer.currency) }}</td>
+                  <template v-if="tracking">
+                    <td class="px-4 py-1 text-right font-mono font-semibold">{{ formatCurrency(offer.invoiced, offer.currency) }}</td>
+                    <td class="px-4 py-1 text-right font-mono font-semibold">{{ formatCurrency(offer.remaining, offer.currency) }}</td>
+                  </template>
+                </tr>
+                <tr v-if="offer.vat_rate !== null"><td colspan="5" class="px-4 py-1 text-right">{{ t('of_vat') }} {{ Number(offer.vat_rate) }} %</td><td class="px-4 py-1 text-right font-mono">{{ formatCurrency(offer.vat_amount, offer.currency) }}</td><td v-if="tracking" colspan="2" /></tr>
+                <tr class="font-semibold"><td colspan="5" class="px-4 py-2 text-right">{{ t('of_total') }}</td><td class="px-4 py-2 text-right font-mono">{{ formatCurrency(offer.total, offer.currency) }}</td><td v-if="tracking" colspan="2" /></tr>
               </tfoot>
+            </table>
+          </CardContent>
+        </Card>
+
+        <Card v-if="tracking">
+          <CardHeader><CardTitle>{{ t('of_invoices_title') }}</CardTitle></CardHeader>
+          <CardContent class="p-0">
+            <p v-if="!offer.invoices.length" class="px-6 pb-4 text-sm text-[hsl(var(--muted-foreground))]">{{ t('of_no_invoices_yet') }}</p>
+            <table v-else class="w-full text-sm">
+              <thead class="text-left text-xs uppercase text-[hsl(var(--muted-foreground))]">
+                <tr>
+                  <th class="px-4 py-2">{{ t('of_number') }}</th>
+                  <th class="px-4 py-2">{{ t('date') }}</th>
+                  <th class="px-4 py-2">{{ t('status') }}</th>
+                  <th class="px-4 py-2 text-right">{{ t('of_net_from_offer') }}</th>
+                  <th class="px-4 py-2 text-right">{{ t('of_total') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="invoice in offer.invoices" :key="invoice.id" class="border-t border-[hsl(var(--border))]" :class="invoice.status === 'cancelled' ? 'text-[hsl(var(--muted-foreground))] line-through' : ''">
+                  <td class="px-4 py-2"><Link :href="`/invoices/${invoice.id}`" class="font-mono text-[hsl(var(--primary))] hover:underline">{{ invoice.number }}</Link></td>
+                  <td class="px-4 py-2">{{ formatDate(invoice.issue_date) }}</td>
+                  <td class="px-4 py-2">{{ t(`invoice_status_${invoice.status}`) }}</td>
+                  <td class="px-4 py-2 text-right font-mono">{{ formatCurrency(invoice.net_from_offer, offer.currency) }}</td>
+                  <td class="px-4 py-2 text-right font-mono">{{ formatCurrency(invoice.total, offer.currency) }}</td>
+                </tr>
+              </tbody>
             </table>
           </CardContent>
         </Card>

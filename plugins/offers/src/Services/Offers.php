@@ -17,7 +17,9 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Plugins\Offers\Models\Offer;
 use Plugins\Offers\Models\OfferLine;
+use Plugins\Offers\Models\OfferSetting;
 use Plugins\Offers\Models\OfferTemplate;
+use Plugins\Offers\Support\Layout;
 
 /**
  * Offer lifecycle: drafts with lines and totals, status changes, revisions and
@@ -87,6 +89,7 @@ class Offers
                 'postal_code' => $contact->postal_code,
                 'city' => $contact->city,
                 'country' => $contact->country ?? 'CH',
+                'phone' => $person?->phone ?: $contact->phone,
             ],
             'title' => $data['title'],
             'intro' => $data['intro'] ?? null,
@@ -99,10 +102,11 @@ class Offers
             'currency' => $data['currency'],
             'vat_rate_id' => $vat?->id,
             'vat_rate' => $vat !== null ? (string) $vat->rate : null,
-            'template_id' => $offer !== null
-                ? $offer->template_id
-                : (empty($data['template_id']) ? null : OfferTemplate::query()->where('organization_id', $orgId)->whereKey($data['template_id'])->value('id')),
         ];
+        if ($offer === null) {
+            $template = empty($data['template_id']) ? null : OfferTemplate::query()->where('organization_id', $orgId)->find((string) $data['template_id']);
+            $attributes += ['template_id' => $template?->id, 'layout' => Layout::normalize($template?->layout)];
+        }
 
         $persist = fn (): Offer => DB::transaction(function () use ($orgId, $offer, $attributes, $data, $userId): Offer {
             if ($offer === null) {
@@ -291,13 +295,12 @@ class Offers
             }
 
             $today = now()->startOfDay();
-            $validity = $offer->valid_until !== null ? (int) $offer->offer_date->diffInDays($offer->valid_until) : null;
-            $copy = $offer->replicate(['number', 'status', 'sent_at', 'decided_at', 'invoice_id', 'document_path', 'document_name', 'source', 'external_ref', 'created_by']);
+            $copy = $offer->replicate(['number', 'status', 'sent_at', 'decided_at', 'document_path', 'document_name', 'source', 'external_ref', 'created_by']);
             $copy->fill([
                 'number' => $this->nextNumber($offer->organization_id, $today->year),
                 'status' => Offer::STATUS_DRAFT,
                 'offer_date' => $today->toDateString(),
-                'valid_until' => $validity !== null ? $today->copy()->addDays($validity)->toDateString() : null,
+                'valid_until' => $today->copy()->addMonthsNoOverflow(OfferSetting::for($offer->organization_id)->validity_months)->toDateString(),
                 'supersedes_id' => $offer->id,
                 'source' => 'app',
                 'created_by' => $userId,
@@ -311,16 +314,42 @@ class Offers
         }));
     }
 
-    /** Create a draft invoice with the lines of an accepted offer and link it. */
-    public function createInvoice(Offer $offer): Invoice
+    /**
+     * What is left to invoice per item line (line amount − amount on invoices that still count).
+     *
+     * @return array<int, array{amount: string, invoiced: string, remaining: string}> offer line id => figures
+     */
+    public function balance(Offer $offer): array
     {
-        return DB::transaction(function () use ($offer): Invoice {
+        $invoiced = $offer->invoicedByLine();
+        $result = [];
+        foreach ($offer->lines as $line) {
+            if ($line->isItem()) {
+                $done = $invoiced[$line->id] ?? '0.00';
+                $result[$line->id] = ['amount' => (string) $line->amount, 'invoiced' => $done, 'remaining' => Money::subtract((string) $line->amount, $done)];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Create a draft invoice from chosen lines of an accepted offer. Each chosen line
+     * has a net amount (not zero, same sign as what remains, at most what remains) and
+     * an invoice text. A line invoiced whole at once keeps its quantity and unit price;
+     * otherwise it becomes 1 × amount.
+     *
+     * @param  array<int, array{line_id: int|string, amount: string, description: string}>  $selection
+     */
+    public function createInvoice(Offer $offer, array $selection): Invoice
+    {
+        return DB::transaction(function () use ($offer, $selection): Invoice {
             $offer = Offer::query()->whereKey($offer->id)->lockForUpdate()->firstOrFail();
             if ($offer->status !== Offer::STATUS_ACCEPTED) {
                 throw ValidationException::withMessages(['status' => __('offers::of.invoice_needs_accepted')]);
             }
-            if ($offer->hasInvoice()) {
-                throw ValidationException::withMessages(['status' => __('offers::of.already_invoiced')]);
+            if ($selection === []) {
+                throw ValidationException::withMessages(['lines' => __('offers::of.invoice_no_lines')]);
             }
             // The invoice takes the rate's current percentage: it must still be the one offered.
             $vatRateId = null;
@@ -332,17 +361,40 @@ class Offers
                 $vatRateId = (string) $rate->id;
             }
 
+            $balance = $this->balance($offer);
+            $lines = [];
+            $links = [];
+            foreach (array_values($selection) as $i => $chosen) {
+                $line = $offer->lines->firstWhere('id', (int) $chosen['line_id']);
+                if ($line === null || ! $line->isItem() || isset($links[$line->id])) {
+                    throw ValidationException::withMessages(["lines.{$i}.line_id" => __('offers::of.invoice_line_invalid')]);
+                }
+                $amount = Money::round((string) $chosen['amount']);
+                $remaining = $balance[$line->id]['remaining'];
+                if (Money::isZero($amount) || Money::isNegative($amount) !== Money::isNegative($remaining)
+                    || Money::compare(Money::absoluteAmount($amount), Money::absoluteAmount($remaining)) > 0) {
+                    throw ValidationException::withMessages(["lines.{$i}.amount" => __('offers::of.invoice_amount_exceeds', ['remaining' => $remaining])]);
+                }
+                $whole = Money::isZero($balance[$line->id]['invoiced']) && Money::compare($amount, (string) $line->amount) === 0;
+                $lines[] = [
+                    'type' => 'item',
+                    'description' => (string) $chosen['description'],
+                    'quantity' => $whole ? (string) $line->quantity : '1',
+                    'unit_price' => $whole ? (string) $line->unit_price : $amount,
+                    'vat_rate_id' => $vatRateId,
+                    'sort_order' => $i,
+                ];
+                $links[$line->id] = ['offer_line_id' => $line->id, 'amount' => $amount];
+            }
+
+            // A rebate alone (or one outweighing the rest) would be a credit note, not an invoice.
+            $net = array_reduce($links, fn (string $sum, array $l): string => Money::add($sum, $l['amount']), '0.00');
+            if (! Money::isPositive($net)) {
+                throw ValidationException::withMessages(['lines' => __('offers::of.invoice_total_not_positive')]);
+            }
+
             $organization = Organization::query()->findOrFail($offer->organization_id);
             $today = now()->startOfDay();
-            $lines = $offer->lines->map(fn (OfferLine $line): array => [
-                'type' => $line->isItem() ? 'item' : 'text',
-                'description' => $this->invoiceDescription($line),
-                'quantity' => $line->isItem() ? (string) $line->quantity : '0',
-                'unit_price' => $line->isItem() ? (string) $line->unit_price : '0',
-                'vat_rate_id' => $line->isItem() ? $vatRateId : null,
-                'sort_order' => $line->sort,
-            ])->values()->all();
-
             $invoice = $this->createInvoice->execute(CreateInvoiceData::fromArray([
                 'organization_id' => $offer->organization_id,
                 'customer_id' => $offer->contact_id,
@@ -354,13 +406,14 @@ class Offers
                 'lines' => $lines,
             ]));
 
-            $offer->update(['invoice_id' => $invoice->id]);
+            $offer->invoiceLinks()->create(['invoice_id' => $invoice->id])->lines()->createMany(array_values($links));
 
             return $invoice;
         });
     }
 
-    private function invoiceDescription(OfferLine $line): string
+    /** Default invoice text of an offer line: position, description, unit. */
+    public function invoiceDescription(OfferLine $line): string
     {
         $text = trim(($line->label ? $line->label.' ' : '').$line->description);
 
@@ -370,15 +423,13 @@ class Offers
     /** Store an offer's texts and lines as a new template. */
     public function saveAsTemplate(Offer $offer, string $name): OfferTemplate
     {
-        $validity = $offer->valid_until !== null ? (int) $offer->offer_date->diffInDays($offer->valid_until) : (int) config('offers.default_validity_days', 30);
-
         return OfferTemplate::create([
             'organization_id' => $offer->organization_id,
             'name' => $name,
             'title' => $offer->title,
             'intro' => $offer->intro,
             'closing' => $offer->closing,
-            'validity_days' => max(1, min(365, $validity)),
+            'layout' => Layout::normalize($offer->layout),
             'lines' => $offer->lines->map(fn (OfferLine $l): array => [
                 'type' => $l->type,
                 'label' => $l->label,

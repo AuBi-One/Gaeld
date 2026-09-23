@@ -28,9 +28,14 @@ const props = defineProps({
 })
 
 const today = new Date().toISOString().slice(0, 10)
-const addDays = (date, days) => {
+// Same as Carbon addMonthsNoOverflow: 31.1. + 1 month = 28/29.2.
+const addMonths = (date, months) => {
   const d = new Date(`${date}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + Number(days || 0))
+  const day = d.getUTCDate()
+  d.setUTCDate(1)
+  d.setUTCMonth(d.getUTCMonth() + Number(months || 0))
+  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()
+  d.setUTCDate(Math.min(day, last))
   return d.toISOString().slice(0, 10)
 }
 const defaultVat = props.vatRates.find(v => v.is_default) ?? null
@@ -45,7 +50,7 @@ const form = useForm({
   closing: props.offer?.closing ?? '',
   notes: props.offer?.notes ?? '',
   offer_date: props.offer?.offer_date ?? today,
-  valid_until: props.offer?.valid_until ?? addDays(today, props.defaults.validity_days ?? 30),
+  valid_until: props.offer ? (props.offer.valid_until ?? '') : addMonths(today, props.defaults.validity_months ?? 2),
   request_date: props.offer?.request_date ?? '',
   language: props.offer?.language ?? props.defaults.language ?? 'fr',
   currency: props.offer?.currency ?? props.defaults.currency ?? 'CHF',
@@ -59,7 +64,6 @@ function applyTemplate(id) {
   form.title = template.title ?? form.title
   form.intro = template.intro ?? ''
   form.closing = template.closing ?? ''
-  form.valid_until = addDays(form.offer_date || today, template.validity_days)
   if (template.lines?.length) form.lines = template.lines.map(toLine)
 }
 
@@ -115,7 +119,6 @@ function submit() {
   <AppLayout :title="offer ? `${t('of_edit_offer')} ${offer.number}` : t('of_new_offer')" help-page="invoices">
     <Breadcrumb
       :items="[
-        { label: t('invoices'), href: '/invoices' },
         { label: t('of_title_offers'), href: '/offers' },
         { label: offer ? offer.number : t('of_new_offer') },
       ]"

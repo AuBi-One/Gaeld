@@ -4,7 +4,7 @@ namespace Plugins\Offers\Models;
 
 use App\Domains\Contacts\Models\Contact;
 use App\Domains\Contacts\Models\ContactPerson;
-use App\Domains\Invoicing\Models\Invoice;
+use App\Domains\Invoicing\Enums\InvoiceStatus;
 use App\Support\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -24,7 +24,7 @@ use Illuminate\Support\Carbon;
  * @property string $status
  * @property int $contact_id
  * @property string|null $contact_person_id
- * @property array{company: string, attention: string|null, email: string|null, address: string|null, postal_code: string|null, city: string|null, country: string|null}|null $recipient
+ * @property array{company: string, attention: string|null, email: string|null, address: string|null, postal_code: string|null, city: string|null, country: string|null, phone?: string|null}|null $recipient
  * @property string $title
  * @property string|null $intro
  * @property string|null $closing
@@ -43,7 +43,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $sent_at
  * @property Carbon|null $decided_at
  * @property string|null $supersedes_id
- * @property string|null $invoice_id
+ * @property array<string, mixed>|null $layout
  * @property string|null $document_path
  * @property string|null $document_name
  * @property int|null $created_by
@@ -54,7 +54,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, OfferLine> $lines
  * @property-read Offer|null $supersedes
  * @property-read Offer|null $supersededBy
- * @property-read Invoice|null $invoice
+ * @property-read Collection<int, OfferInvoice> $invoiceLinks
  */
 class Offer extends Model
 {
@@ -74,12 +74,13 @@ class Offer extends Model
 
     public const STATUSES = [self::STATUS_DRAFT, self::STATUS_SENT, self::STATUS_ACCEPTED, self::STATUS_REFUSED, self::STATUS_SUPERSEDED];
 
-    protected $fillable = ['organization_id', 'number', 'status', 'contact_id', 'contact_person_id', 'recipient', 'title', 'intro', 'closing', 'notes', 'offer_date', 'valid_until', 'request_date', 'language', 'currency', 'vat_rate_id', 'vat_rate', 'subtotal', 'vat_amount', 'total', 'template_id', 'sent_at', 'decided_at', 'supersedes_id', 'invoice_id', 'document_path', 'document_name', 'created_by', 'source', 'external_ref'];
+    protected $fillable = ['organization_id', 'number', 'status', 'contact_id', 'contact_person_id', 'recipient', 'title', 'intro', 'closing', 'notes', 'offer_date', 'valid_until', 'request_date', 'language', 'currency', 'vat_rate_id', 'vat_rate', 'subtotal', 'vat_amount', 'total', 'template_id', 'sent_at', 'decided_at', 'supersedes_id', 'layout', 'document_path', 'document_name', 'created_by', 'source', 'external_ref'];
 
     protected function casts(): array
     {
         return [
             'recipient' => 'array',
+            'layout' => 'array',
             'offer_date' => 'date:Y-m-d',
             'valid_until' => 'date:Y-m-d',
             'request_date' => 'date:Y-m-d',
@@ -122,10 +123,10 @@ class Offer extends Model
         return $this->hasOne(self::class, 'supersedes_id');
     }
 
-    /** @return BelongsTo<Invoice, $this> */
-    public function invoice(): BelongsTo
+    /** @return HasMany<OfferInvoice, $this> */
+    public function invoiceLinks(): HasMany
     {
-        return $this->belongsTo(Invoice::class);
+        return $this->hasMany(OfferInvoice::class);
     }
 
     public function isDraft(): bool
@@ -141,9 +142,27 @@ class Offer extends Model
             && $this->valid_until->lt(now()->startOfDay());
     }
 
-    /** The draft invoice made from this offer, if it still exists (a deleted draft frees the offer). */
+    /** At least one invoice made from this offer still counts (exists, not cancelled). */
     public function hasInvoice(): bool
     {
-        return $this->invoice_id !== null && Invoice::query()->whereKey($this->invoice_id)->exists();
+        return $this->invoiceLinks()->whereHas('invoice', fn ($q) => $q->where('status', '!=', InvoiceStatus::Cancelled->value))->exists();
+    }
+
+    /**
+     * Net amount invoiced per offer line, over the invoices that still count.
+     *
+     * @return array<int, string> offer line id => amount
+     */
+    public function invoicedByLine(): array
+    {
+        return OfferInvoiceLine::query()
+            ->whereHas('link', fn ($q) => $q->where('offer_id', $this->id)
+                ->whereHas('invoice', fn ($q) => $q->where('status', '!=', InvoiceStatus::Cancelled->value)))
+            ->whereNotNull('offer_line_id')
+            ->groupBy('offer_line_id')
+            ->selectRaw('offer_line_id, SUM(amount) AS invoiced')
+            ->pluck('invoiced', 'offer_line_id')
+            ->map(fn ($v): string => number_format((float) $v, 2, '.', ''))
+            ->all();
     }
 }

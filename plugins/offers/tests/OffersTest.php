@@ -20,6 +20,7 @@ use Plugins\Offers\Models\Offer;
 use Plugins\Offers\Models\OfferTemplate;
 use Plugins\Offers\Services\OfferPdf;
 use Plugins\Offers\Services\Offers;
+use Plugins\Offers\Support\Layout;
 
 class OffersTest extends OffersTestCase
 {
@@ -67,7 +68,7 @@ class OffersTest extends OffersTestCase
         $this->assertSame('8.10', (string) $offer->vat_rate);
         $this->assertCount(3, $offer->lines);
         $this->assertSame('0.00', (string) $offer->lines[0]->amount);
-        $this->assertSame(['company' => 'Salines Test SA', 'attention' => 'Marie Exemple', 'email' => 'marie@example.test', 'address' => 'Route des Mines 1', 'postal_code' => '1880', 'city' => 'Bex', 'country' => 'CH'], $offer->recipient);
+        $this->assertSame(['company' => 'Salines Test SA', 'attention' => 'Marie Exemple', 'email' => 'marie@example.test', 'address' => 'Route des Mines 1', 'postal_code' => '1880', 'city' => 'Bex', 'country' => 'CH', 'phone' => null], $offer->recipient);
     }
 
     #[Test]
@@ -145,7 +146,8 @@ class OffersTest extends OffersTestCase
         foreach (['accept', 'refuse', 'revert', 'reopen'] as $action) {
             $this->actAsOrg()->post("/offers/{$offer->id}/{$action}")->assertSessionHasErrors('status');
         }
-        $this->actAsOrg()->post("/offers/{$offer->id}/invoice")->assertSessionHasErrors('status');
+        $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => $this->whole($offer)])->assertSessionHasErrors('status');
+        $this->actAsOrg()->get("/offers/{$offer->id}/invoice")->assertRedirect("/offers/{$offer->id}");
         $this->actAsOrg()->post("/offers/{$offer->id}/revise")->assertSessionHasErrors('status');
         $this->actAsOrg()->post("/offers/{$offer->id}/delete")->assertNotFound();
         $this->assertSame(Offer::STATUS_DRAFT, $offer->fresh()->status);
@@ -243,14 +245,23 @@ class OffersTest extends OffersTestCase
         $this->actAsOrg()->post("/offers/{$original->id}/accept")->assertSessionHasErrors('status');
     }
 
+    /** Every item line of the offer, whole, with its default invoice text. @return list<array<string, mixed>> */
+    private function whole(Offer $offer): array
+    {
+        return $offer->lines()->where('type', 'item')->get()->map(fn ($l): array => [
+            'line_id' => $l->id, 'amount' => (string) $l->amount, 'description' => app(Offers::class)->invoiceDescription($l),
+        ])->values()->all();
+    }
+
     #[Test]
-    public function an_accepted_offer_becomes_a_draft_invoice_once(): void
+    public function an_accepted_offer_invoiced_whole_gives_the_same_totals(): void
     {
         $offer = app(Offers::class)->transition($this->sent(), 'accept');
+        $this->actAsOrg()->get("/offers/{$offer->id}/invoice")->assertOk()
+            ->assertInertia(fn ($page) => $page->component('Offers/Invoice', false)->has('lines', 2)->where('lines.0.remaining', '2400.00')->where('lines.0.invoice_text', '1 Atelier (jour)'));
 
-        $response = $this->actAsOrg()->post("/offers/{$offer->id}/invoice");
-        $offer->refresh();
-        $invoice = Invoice::query()->with('lines')->findOrFail($offer->invoice_id);
+        $response = $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => $this->whole($offer)]);
+        $invoice = Invoice::query()->with('lines')->sole();
         $response->assertRedirect("/invoices/{$invoice->id}");
 
         $this->assertSame(InvoiceStatus::Draft, $invoice->status);
@@ -258,18 +269,101 @@ class OffersTest extends OffersTestCase
         $this->assertSame((string) $offer->subtotal, (string) $invoice->subtotal);
         $this->assertSame((string) $offer->vat_amount, (string) $invoice->vat_amount);
         $this->assertSame((string) $offer->total, (string) $invoice->total);
-        $this->assertCount(3, $invoice->lines);
-        $this->assertSame('1 Atelier (jour)', $invoice->lines[1]->description);
+        $this->assertCount(2, $invoice->lines);
+        $this->assertSame('1 Atelier (jour)', $invoice->lines[0]->description);
+        $this->assertSame('2.00', (string) $invoice->lines[0]->quantity); // whole line: quantity and unit price kept
         $this->assertStringContainsString('OF-2026-001', (string) $invoice->notes);
 
-        $this->actAsOrg()->post("/offers/{$offer->id}/invoice")->assertSessionHasErrors('status');
+        // nothing left: a second invoice of the same lines is refused, reopen too
+        $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => $this->whole($offer)])->assertSessionHasErrors('lines.0.amount');
         $this->actAsOrg()->post("/offers/{$offer->id}/reopen")->assertSessionHasErrors('status');
+        $this->actAsOrg()->get('/offers')->assertInertia(fn ($page) => $page->where('offers.data.0.invoicing', 'full')->where('stats.to_invoice.count', 0));
+        $this->assertSame(1, Invoice::query()->count());
+    }
+
+    #[Test]
+    public function an_offer_can_be_invoiced_in_stages(): void
+    {
+        $offer = app(Offers::class)->transition($this->sent(), 'accept');
+        $atelier = $offer->lines()->where('label', '1')->sole();
+        $rapport = $offer->lines()->where('label', '2')->sole();
+
+        // deposit: 1800 of the 2400 workshop, own text
+        $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => [
+            ['line_id' => $atelier->id, 'amount' => '1800', 'description' => '1 Atelier - 75% done'],
+        ]])->assertSessionHasNoErrors();
+        $first = Invoice::query()->with('lines')->sole();
+        $this->assertSame('1.00', (string) $first->lines[0]->quantity);
+        $this->assertSame('1800.00', (string) $first->lines[0]->unit_price);
+        $this->assertSame('1 Atelier - 75% done', $first->lines[0]->description);
+        $this->assertSame('1945.80', (string) $first->total);
+
+        $balance = app(Offers::class)->balance($offer->fresh('lines'));
+        $this->assertSame('600.00', $balance[$atelier->id]['remaining']);
+        $this->actAsOrg()->get("/offers/{$offer->id}")->assertInertia(fn ($page) => $page
+            ->where('offer.invoiced', '1800.00')->where('offer.remaining', '649.99')->has('offer.invoices', 1)->where('offer.can_invoice', true));
+        $this->actAsOrg()->get('/offers')->assertInertia(fn ($page) => $page->where('offers.data.0.invoicing', 'partial')
+            ->where('stats.to_invoice.count', 1)->where('stats.to_invoice.total', '649.99'));
+
+        // more than what remains, zero, wrong sign, a line of another offer, the same line twice: refused
+        $otherLine = $this->offer()->lines()->where('type', 'item')->firstOrFail();
+        foreach ([
+            'lines.0.amount' => [['line_id' => $atelier->id, 'amount' => '600.01', 'description' => 'x']],
+            'lines.0.amount ' => [['line_id' => $atelier->id, 'amount' => '0', 'description' => 'x']],
+            'lines.0.amount  ' => [['line_id' => $atelier->id, 'amount' => '-10', 'description' => 'x']],
+            'lines.0.line_id' => [['line_id' => $otherLine->id, 'amount' => '10', 'description' => 'x']],
+            'lines.1.line_id' => [['line_id' => $rapport->id, 'amount' => '10', 'description' => 'x'], ['line_id' => $rapport->id, 'amount' => '10', 'description' => 'x']],
+        ] as $key => $lines) {
+            $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => $lines])->assertSessionHasErrors(trim($key));
+        }
         $this->assertSame(1, Invoice::query()->count());
 
-        // deleting the draft invoice frees the offer again
-        $invoice->delete();
+        // the rest in a second invoice
+        $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => [
+            ['line_id' => $atelier->id, 'amount' => '600', 'description' => '1 Atelier - solde'],
+            ['line_id' => $rapport->id, 'amount' => '49.99', 'description' => '2 Rapport'],
+        ]])->assertSessionHasNoErrors();
+        $this->assertSame(2, Invoice::query()->count());
+        $this->actAsOrg()->get("/offers/{$offer->id}")->assertInertia(fn ($page) => $page->where('offer.remaining', '0.00')->where('offer.can_invoice', false));
+
+        // a cancelled or deleted invoice no longer counts
+        $first->update(['status' => InvoiceStatus::Cancelled]);
+        $this->assertSame('1800.00', app(Offers::class)->balance($offer->fresh('lines'))[$atelier->id]['remaining']);
+        Invoice::query()->whereKeyNot($first->id)->sole()->delete();
         $this->assertFalse($offer->fresh()->hasInvoice());
-        $this->actAsOrg()->post("/offers/{$offer->id}/invoice")->assertSessionHasNoErrors();
+        $this->actAsOrg()->post("/offers/{$offer->id}/reopen")->assertSessionHasNoErrors();
+    }
+
+    #[Test]
+    public function rebates_are_invoiced_with_positive_lines_only(): void
+    {
+        $offer = app(Offers::class)->transition($this->sent(['lines' => [
+            ['type' => 'item', 'label' => 'A', 'description' => 'Conseil', 'quantity' => '1', 'unit_price' => '1000'],
+            ['type' => 'item', 'label' => 'B', 'description' => 'Option', 'quantity' => '1', 'unit_price' => '100'],
+            ['type' => 'item', 'label' => 'R', 'description' => 'Rabais', 'quantity' => '1', 'unit_price' => '-100'],
+        ]]), 'accept');
+        [$a, $b, $r] = $offer->lines()->orderBy('sort')->get()->all();
+
+        // a rebate alone, or one outweighing the rest, would be a credit note
+        $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => [['line_id' => $r->id, 'amount' => '-100', 'description' => 'R']]])
+            ->assertSessionHasErrors('lines');
+        $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => [
+            ['line_id' => $b->id, 'amount' => '50', 'description' => 'B'], ['line_id' => $r->id, 'amount' => '-100', 'description' => 'R'],
+        ]])->assertSessionHasErrors('lines');
+
+        // A whole: 1000 of a 1000 net total — still partly invoiced, B and the rebate remain
+        $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => [['line_id' => $a->id, 'amount' => '1000', 'description' => 'A']]])
+            ->assertSessionHasNoErrors();
+        $this->actAsOrg()->get('/offers')->assertInertia(fn ($page) => $page->where('offers.data.0.invoicing', 'partial')
+            ->where('stats.to_invoice.count', 1)->where('stats.to_invoice.total', '0.00'));
+
+        // B with the rebate: 0 left on every line
+        $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => [
+            ['line_id' => $b->id, 'amount' => '100', 'description' => 'B'], ['line_id' => $r->id, 'amount' => '-50', 'description' => 'R'],
+        ]])->assertSessionHasNoErrors();
+        $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => [['line_id' => $r->id, 'amount' => '-50', 'description' => 'R']]])
+            ->assertSessionHasErrors('lines');
+        $this->assertSame('-50.00', app(Offers::class)->balance($offer->fresh('lines'))[$r->id]['remaining']);
     }
 
     #[Test]
@@ -277,7 +371,7 @@ class OffersTest extends OffersTestCase
     {
         $this->actAsOrg()->post('/offer-templates', [
             'name' => 'Conseil', 'title' => 'Mandat de conseil', 'intro' => 'Bonjour {attention}', 'closing' => null,
-            'validity_days' => 45, 'is_default' => true,
+            'is_default' => true, 'layout' => ['from' => ['logo' => false, 'email' => true], 'to' => ['phone' => true]],
             'lines' => [['type' => 'item', 'label' => '1', 'description' => 'Conseil', 'quantity' => '1', 'unit' => 'jour', 'unit_price' => '1500']],
         ])->assertRedirect('/offer-templates');
         $template = OfferTemplate::query()->firstOrFail();
@@ -290,10 +384,16 @@ class OffersTest extends OffersTestCase
         $this->actAsOrg()->post("/offers/{$offer->id}/save-as-template", ['name' => 'Analyse'])->assertSessionHasNoErrors();
         $copy = OfferTemplate::query()->where('name', 'Analyse')->firstOrFail();
         $this->assertCount(3, $copy->lines ?? []);
-        $this->assertSame(30, $copy->validity_days);
+        $this->assertSame(Layout::DEFAULT, $copy->layout);
+        $this->assertSame(['logo' => false, 'address' => true, 'email' => true, 'phone' => false], $template->layout['from']);
+
+        // a new offer from the template copies its layout
+        $fromTemplate = $this->offer(['template_id' => $template->id]);
+        $this->assertSame($template->id, $fromTemplate->template_id);
+        $this->assertTrue($fromTemplate->layout['to']['phone']);
         $this->assertFalse($copy->is_default);
 
-        $this->actAsOrg()->put("/offer-templates/{$copy->id}", ['name' => 'Analyse', 'validity_days' => 30, 'is_default' => true, 'lines' => []])->assertRedirect('/offer-templates');
+        $this->actAsOrg()->put("/offer-templates/{$copy->id}", ['name' => 'Analyse', 'is_default' => true, 'lines' => []])->assertRedirect('/offer-templates');
         $this->assertFalse($template->fresh()->is_default);
         $this->actAsOrg()->delete("/offer-templates/{$template->id}")->assertRedirect('/offer-templates');
         $this->assertNull(OfferTemplate::query()->find($template->id));
@@ -315,7 +415,7 @@ class OffersTest extends OffersTestCase
         $as()->post('/offers', $this->payload())->assertForbidden();
         $as()->post("/offers/{$offer->id}/send")->assertForbidden();
         $as()->delete("/offers/{$offer->id}")->assertForbidden();
-        $as()->post('/offer-templates', ['name' => 'X', 'validity_days' => 30, 'lines' => []])->assertForbidden();
+        $as()->post('/offer-templates', ['name' => 'X', 'lines' => []])->assertForbidden();
     }
 
     #[Test]
@@ -333,11 +433,51 @@ class OffersTest extends OffersTestCase
     }
 
     #[Test]
-    public function the_menu_lists_offers_under_invoices(): void
+    public function the_menu_lists_offers_in_the_activity_section(): void
     {
-        $keys = collect(app(PluginNavigation::class)->toArray())->where('parent', 'invoices')->pluck('key')->all();
-        $this->assertContains('offers', $keys);
-        $this->assertContains('offer_templates', $keys);
+        $entry = collect(app(PluginNavigation::class)->toArray())->firstWhere('key', 'offers');
+        $this->assertSame('after:invoices', $entry['parent']);
+        $this->assertSame('FilePen', $entry['icon']);
+    }
+
+    #[Test]
+    public function validity_and_sender_come_from_the_organisation_settings(): void
+    {
+        $this->actAsOrg()->get('/offers/create')->assertInertia(fn ($page) => $page->where('defaults.validity_months', 2));
+        $this->actAsOrg()->put('/offer-templates/settings', ['validity_months' => 25])->assertSessionHasErrors('validity_months');
+        $this->actAsOrg()->put('/offer-templates/settings', ['validity_months' => 3, 'sender_email' => 'offres@example.test', 'sender_phone' => '+41 21 000 00 00'])
+            ->assertRedirect('/offer-templates');
+        $this->actAsOrg()->get('/offers/create')->assertInertia(fn ($page) => $page->where('defaults.validity_months', 3));
+        $this->actAsOrg()->get('/offer-templates')->assertInertia(fn ($page) => $page->where('settings.sender_email', 'offres@example.test'));
+
+        // a revision is valid for the organisation's months from today
+        $revision = app(Offers::class)->revise($this->sent());
+        $this->assertSame(now()->startOfDay()->addMonthsNoOverflow(3)->toDateString(), $revision->valid_until?->toDateString());
+
+        // the From/To boxes follow the layout
+        $this->person->update(['phone' => '+41 79 000 00 00']);
+        $offer = $this->offer();
+        $html = app(OfferPdf::class)->html($offer);
+        $this->assertStringNotContainsString('offres@example.test', $html);
+        $this->assertStringNotContainsString('+41 79 000 00 00', $html);
+        $offer->update(['layout' => ['from' => ['email' => true, 'phone' => true, 'address' => false], 'to' => ['phone' => true, 'address' => false]]]);
+        $html = app(OfferPdf::class)->html($offer->fresh());
+        $this->assertStringContainsString('offres@example.test', $html);
+        $this->assertStringContainsString('+41 21 000 00 00', $html);
+        $this->assertStringContainsString('+41 79 000 00 00', $html);
+        $this->assertStringNotContainsString('Route des Mines 1', substr($html, (int) strpos($html, 'class="recipient"')));
+    }
+
+    #[Test]
+    public function members_can_create_offers(): void
+    {
+        $member = User::factory()->create(['onboarding_completed_at' => now()]);
+        $this->org->users()->attach($member->id, ['role' => 'member']);
+        $this->assignOrganizationRole($member, $this->org, 'member');
+
+        $this->actingAs($member)->withSession(['current_organization_id' => $this->org->id])
+            ->post('/offers', $this->payload())->assertSessionHasNoErrors()->assertRedirect();
+        $this->assertSame(1, Offer::query()->count());
     }
 
     #[Test]
@@ -390,11 +530,11 @@ class OffersTest extends OffersTestCase
     {
         $offer = app(Offers::class)->transition($this->sent(), 'accept');
         $this->vat->update(['rate' => 7.70]);
-        $this->actAsOrg()->post("/offers/{$offer->id}/invoice")->assertSessionHasErrors('status');
+        $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => $this->whole($offer)])->assertSessionHasErrors('status');
 
         $this->vat->update(['rate' => 8.10]);
         $this->vat->delete();
-        $this->actAsOrg()->post("/offers/{$offer->id}/invoice")->assertSessionHasErrors('status');
+        $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => $this->whole($offer)])->assertSessionHasErrors('status');
         $this->assertSame(0, Invoice::query()->count());
     }
 
@@ -404,7 +544,7 @@ class OffersTest extends OffersTestCase
         $otherOrg = Organization::factory()->create();
         $foreignContact = Contact::factory()->create(['organization_id' => $otherOrg->id]);
         $foreignVat = VatRate::factory()->create(['organization_id' => $otherOrg->id]);
-        $foreignTemplate = OfferTemplate::query()->create(['organization_id' => $otherOrg->id, 'name' => 'Foreign', 'validity_days' => 30]);
+        $foreignTemplate = OfferTemplate::query()->create(['organization_id' => $otherOrg->id, 'name' => 'Foreign']);
 
         $this->actAsOrg()->post('/offers', $this->payload(['contact_id' => $foreignContact->id, 'contact_person_id' => null]))->assertSessionHasErrors('contact_id');
         $this->actAsOrg()->post('/offers', $this->payload(['vat_rate_id' => $foreignVat->id]))->assertSessionHasErrors('vat_rate_id');

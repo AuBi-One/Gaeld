@@ -15,6 +15,7 @@ Route::middleware(['web', 'auth', 'verified', 'org', 'org-2fa', 'subscription'])
         Route::delete('/{offer}', [OfferController::class, 'destroy'])->whereUuid('offer')->name('destroy');
         Route::get('/{offer}/document', [OfferController::class, 'document'])->whereUuid('offer')->name('document');
         Route::post('/{offer}/revise', [OfferController::class, 'revise'])->whereUuid('offer')->name('revise');
+        Route::get('/{offer}/invoice', [OfferController::class, 'invoiceForm'])->whereUuid('offer')->name('invoice-form');
         Route::post('/{offer}/invoice', [OfferController::class, 'invoice'])->whereUuid('offer')->name('invoice');
         Route::post('/{offer}/save-as-template', [OfferController::class, 'saveAsTemplate'])->whereUuid('offer')->name('save-as-template');
         Route::post('/{offer}/{action}', [OfferController::class, 'transition'])->whereUuid('offer')->whereIn('action', ['send', 'revert', 'accept', 'refuse', 'reopen'])->name('transition');
@@ -24,6 +25,7 @@ Route::middleware(['web', 'auth', 'verified', 'org', 'org-2fa', 'subscription'])
         Route::get('/', [TemplateController::class, 'index'])->name('index');
         Route::get('/create', [TemplateController::class, 'create'])->name('create');
         Route::post('/', [TemplateController::class, 'store'])->name('store');
+        Route::put('/settings', [TemplateController::class, 'updateSettings'])->name('settings');
         Route::get('/{template}/edit', [TemplateController::class, 'edit'])->whereUuid('template')->name('edit');
         Route::put('/{template}', [TemplateController::class, 'update'])->whereUuid('template')->name('update');
         Route::delete('/{template}', [TemplateController::class, 'destroy'])->whereUuid('template')->name('destroy');

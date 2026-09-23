@@ -20,7 +20,8 @@ class OffersServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(__DIR__.'/../migrations');
 
         $navigation = $this->app->make(PluginNavigation::class);
-        $navigation->add('invoices', 'offers', 'offers::of.nav_offers', '/offers', 'invoicing.view');
-        $navigation->add('invoices', 'offer_templates', 'offers::of.nav_templates', '/offer-templates', 'invoicing.view');
+        // Top-level entry in the Activity section, right after Invoices (hidden where invoices
+        // are, e.g. fiduciary organisations); templates are reached from the offers page.
+        $navigation->add('after:invoices', 'offers', 'offers::of.nav_offers', '/offers', 'invoicing.view', 'FilePen');
     }
 }

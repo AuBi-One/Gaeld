@@ -4,11 +4,20 @@
         $organization->address,
         trim(($organization->postal_code ?? '').' '.($organization->city ?? '')),
     ]);
+    $senderLines = array_filter([
+        ...($layout['from']['address'] ? $orgAddress : []),
+        $layout['from']['email'] ? $settings->sender_email : null,
+        $layout['from']['phone'] ? $settings->sender_phone : null,
+    ]);
     $recipientLines = array_filter([
         ($recipient['attention'] ?? null) ? $t('pdf_attention', ['name' => $recipient['attention']]) : null,
-        $recipient['address'] ?? null,
-        trim(($recipient['postal_code'] ?? '').' '.($recipient['city'] ?? '')),
-        ($recipient['country'] ?? 'CH') !== 'CH' ? ($recipient['country'] ?? null) : null,
+        ...($layout['to']['address'] ? [
+            $recipient['address'] ?? null,
+            trim(($recipient['postal_code'] ?? '').' '.($recipient['city'] ?? '')),
+            ($recipient['country'] ?? 'CH') !== 'CH' ? ($recipient['country'] ?? null) : null,
+        ] : []),
+        $layout['to']['email'] ? ($recipient['email'] ?? null) : null,
+        $layout['to']['phone'] ? ($recipient['phone'] ?? null) : null,
     ]);
 @endphp
 <!DOCTYPE html>
@@ -52,7 +61,7 @@
     <div class="sender">
         @if($logo)<img class="logo" src="{{ $logo }}" alt=""><br>@endif
         <div class="name">{{ $organization->legal_name ?? $organization->name }}</div>
-        @foreach($orgAddress as $line)<div>{{ $line }}</div>@endforeach
+        @foreach($senderLines as $line)<div>{{ $line }}</div>@endforeach
     </div>
     <div class="recipient">
         <div class="company">{{ $recipient['company'] ?? '' }}</div>

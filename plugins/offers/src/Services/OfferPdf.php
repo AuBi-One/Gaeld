@@ -7,6 +7,8 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Plugins\Offers\Models\Offer;
+use Plugins\Offers\Models\OfferSetting;
+use Plugins\Offers\Support\Layout;
 
 /**
  * The offer document: a Blade view (Swiss window-envelope layout) rendered by dompdf.
@@ -42,7 +44,9 @@ class OfferPdf
             'offer' => $offer,
             'organization' => $organization,
             'recipient' => $recipient,
-            'logo' => $this->logo($organization),
+            'layout' => $layout = Layout::normalize($offer->layout),
+            'logo' => $layout['from']['logo'] ? $this->logo($organization) : null,
+            'settings' => OfferSetting::for($offer->organization_id),
             'intro' => $this->markdown($offer->intro, $placeholders),
             'closing' => $this->markdown($offer->closing, $placeholders),
             't' => fn (string $key, array $replace = []): string => (string) trans('offers::of.'.$key, $replace, $lang),

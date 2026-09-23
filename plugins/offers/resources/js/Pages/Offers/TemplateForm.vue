@@ -16,14 +16,18 @@ const { t } = useTranslations()
 
 const props = defineProps({
   template: { type: Object, default: null },
+  defaultLayout: { type: Object, required: true },
 })
+
+const clone = value => JSON.parse(JSON.stringify(value))
+const boxes = { from: ['logo', 'address', 'email', 'phone'], to: ['address', 'email', 'phone'] }
 
 const form = useForm({
   name: props.template?.name ?? '',
   title: props.template?.title ?? '',
   intro: props.template?.intro ?? '',
   closing: props.template?.closing ?? '',
-  validity_days: props.template?.validity_days ?? 30,
+  layout: clone(props.template?.layout ?? props.defaultLayout),
   is_default: props.template?.is_default ?? false,
   lines: (props.template?.lines ?? []).map(l => ({ type: l.type, label: l.label ?? '', description: l.description ?? '', quantity: l.quantity ?? '', unit: l.unit ?? '', unit_price: l.unit_price ?? '' })),
 })
@@ -49,7 +53,6 @@ function submit() {
         <CardHeader><CardTitle>{{ template ? t('of_edit_template') : t('of_new_template') }}</CardTitle></CardHeader>
         <CardContent class="grid gap-4 sm:grid-cols-2">
           <FormInput v-model="form.name" id="of-tpl-name" :label="t('of_template_name')" :error="form.errors.name" required />
-          <FormInput v-model="form.validity_days" id="of-tpl-validity" type="number" min="1" max="365" :label="t('of_validity_days')" :error="form.errors.validity_days" required />
           <FormInput v-model="form.title" id="of-tpl-title" :label="t('of_subject')" :error="form.errors.title" class="sm:col-span-2" />
           <label class="flex items-center gap-2 text-sm sm:col-span-2">
             <input v-model="form.is_default" type="checkbox" class="h-4 w-4 accent-[hsl(var(--primary))]" />
@@ -57,6 +60,22 @@ function submit() {
           </label>
           <FormTextarea v-model="form.intro" id="of-tpl-intro" :label="t('of_intro')" :error="form.errors.intro" :rows="6" class="sm:col-span-2" />
           <p class="text-xs text-[hsl(var(--muted-foreground))] sm:col-span-2">{{ t('of_texts_hint') }}</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{{ t('of_layout') }}</CardTitle>
+          <p class="mt-1 text-sm text-[hsl(var(--muted-foreground))]">{{ t('of_layout_hint') }}</p>
+        </CardHeader>
+        <CardContent class="grid gap-4 sm:grid-cols-2">
+          <fieldset v-for="(elements, box) in boxes" :key="box" class="space-y-2">
+            <legend class="mb-1 text-sm font-medium">{{ t(`of_layout_${box}`) }}</legend>
+            <label v-for="element in elements" :key="element" class="flex items-center gap-2 text-sm">
+              <input :id="`of-tpl-layout-${box}-${element}`" v-model="form.layout[box][element]" type="checkbox" class="h-4 w-4 accent-[hsl(var(--primary))]" />
+              {{ t(`of_layout_${element}`) }}
+            </label>
+          </fieldset>
         </CardContent>
       </Card>
 

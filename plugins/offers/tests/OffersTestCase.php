@@ -37,7 +37,7 @@ abstract class OffersTestCase extends TestCase
     {
         parent::setUp();
 
-        if (! Schema::hasTable('of_offers')) {
+        if (! Schema::hasTable('of_settings')) {
             $this->artisan('migrate', ['--path' => 'plugins/offers/migrations', '--force' => true]);
         }
 

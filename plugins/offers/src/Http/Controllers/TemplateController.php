@@ -7,7 +7,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Response;
 use Plugins\Offers\Models\Offer;
+use Plugins\Offers\Models\OfferSetting;
 use Plugins\Offers\Models\OfferTemplate;
+use Plugins\Offers\Support\Layout;
 
 class TemplateController extends PluginController
 {
@@ -23,19 +25,33 @@ class TemplateController extends PluginController
                     'id' => $t->id,
                     'name' => $t->name,
                     'title' => $t->title,
-                    'validity_days' => $t->validity_days,
                     'lines' => count($t->lines ?? []),
                     'is_default' => $t->is_default,
                     'used' => (int) ($used[$t->id] ?? 0),
                 ]),
+            'settings' => OfferSetting::for($this->orgId())->only(['validity_months', 'sender_email', 'sender_phone']),
         ]);
+    }
+
+    /** Offer settings of the organisation (shown on the templates page). */
+    public function updateSettings(Request $request): RedirectResponse
+    {
+        $this->authorizeWrite();
+        $data = $request->validate([
+            'validity_months' => ['required', 'integer', 'min:1', 'max:24'],
+            'sender_email' => ['nullable', 'email', 'max:255'],
+            'sender_phone' => ['nullable', 'string', 'max:50'],
+        ]);
+        OfferSetting::query()->updateOrCreate(['organization_id' => $this->orgId()], $data);
+
+        return redirect('/offer-templates')->with('success', __('offers::of.settings_saved'));
     }
 
     public function create(): Response
     {
         $this->authorizeWrite();
 
-        return $this->page('Offers/TemplateForm', ['template' => null]);
+        return $this->page('Offers/TemplateForm', ['template' => null, 'defaultLayout' => Layout::DEFAULT]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -50,7 +66,10 @@ class TemplateController extends PluginController
     {
         $this->authorizeWrite();
 
-        return $this->page('Offers/TemplateForm', ['template' => $template->only(['id', 'name', 'title', 'intro', 'closing', 'validity_days', 'lines', 'is_default'])]);
+        return $this->page('Offers/TemplateForm', [
+            'template' => ['layout' => Layout::normalize($template->layout)] + $template->only(['id', 'name', 'title', 'intro', 'closing', 'lines', 'is_default']),
+            'defaultLayout' => Layout::DEFAULT,
+        ]);
     }
 
     public function update(Request $request, OfferTemplate $template): RedirectResponse
@@ -81,7 +100,7 @@ class TemplateController extends PluginController
                 'title' => $data['title'] ?? null,
                 'intro' => $data['intro'] ?? null,
                 'closing' => $data['closing'] ?? null,
-                'validity_days' => (int) $data['validity_days'],
+                'layout' => Layout::normalize($data['layout'] ?? null),
                 'is_default' => (bool) ($data['is_default'] ?? false),
                 'lines' => array_map(fn (array $l): array => [
                     'type' => $l['type'],
@@ -103,8 +122,8 @@ class TemplateController extends PluginController
             'title' => ['nullable', 'string', 'max:255'],
             'intro' => ['nullable', 'string', 'max:20000'],
             'closing' => ['nullable', 'string', 'max:20000'],
-            'validity_days' => ['required', 'integer', 'min:1', 'max:365'],
             'is_default' => ['boolean'],
+            ...Layout::rules(),
             ...$this->lineRules(0),
         ]);
     }
