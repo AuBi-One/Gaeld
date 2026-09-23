@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Console\Commands\BackfillOrganizationDocumentStorageCommand;
+use App\Domains\Accounting\DTOs\JournalEntryReference;
 use App\Domains\Accounting\Jobs\ExportChartOfAccountsJob;
 use App\Domains\Accounting\Listeners\JournalEventSubscriber;
 use App\Domains\Accounting\Models\Account;
@@ -18,6 +19,7 @@ use App\Domains\Accounting\Policies\CostCenterPolicy;
 use App\Domains\Accounting\Policies\ExchangeRatePolicy;
 use App\Domains\Accounting\Policies\FiscalYearPolicy;
 use App\Domains\Accounting\Policies\TaxDeclarationPolicy;
+use App\Domains\Accounting\Services\JournalEntryReferences;
 use App\Domains\Api\Jobs\DispatchWebhookJob;
 use App\Domains\Api\Models\PersonalAccessToken;
 use App\Domains\Assets\Jobs\MonthlyDepreciationJob;
@@ -95,6 +97,12 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(SourceTaxServiceInterface::class, NullSourceTaxService::class);
         $this->app->singleton(ReimbursementSourceInterface::class, NullReimbursementSource::class);
         $this->app->singleton(PluginNavigation::class);
+        // Owners of journal entries: such entries are edited or deleted by their feature, not in the journal.
+        $this->app->singleton(JournalEntryReferences::class, fn (): JournalEntryReferences => (new JournalEntryReferences)
+            ->registerColumn(SalarySlip::class, 'journal_entry_id', fn (SalarySlip $slip): JournalEntryReference => new JournalEntryReference(
+                __('app.journal_source_salary_slip', ['period' => $slip->month_label, 'employee' => $slip->employee_name]),
+                route('payroll.salarySlips.show', $slip),
+            ), ['employee' => fn ($query) => $query->withTrashed()]));
         $this->app->singleton(
             ReceiptOcrInterface::class,
             config('services.ocr.driver', 'tesseract') === 'tesseract'

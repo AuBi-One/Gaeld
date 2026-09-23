@@ -160,7 +160,15 @@ class SalarySlipController extends Controller
             return redirect()->back()->with('error', __('app.salary_slip_not_posted'));
         }
 
-        $action->execute($slip);
+        try {
+            $action->execute($slip);
+        } catch (\DomainException $e) {
+            if ($request->wantsJson()) {
+                return new JsonResponse(['message' => $e->getMessage()], 422);
+            }
+
+            return redirect()->back()->with('error', $e->getMessage());
+        }
 
         if ($request->wantsJson()) {
             return new JsonResponse(['message' => __('app.salary_slip_unposted'), 'id' => $slip->id]);

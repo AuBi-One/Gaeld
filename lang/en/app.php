@@ -2373,6 +2373,10 @@ return [
     'accounts' => 'Accounts',
     'n_selected' => '{1} :count selected|[2,*] :count selected',
     'journal_export_hint' => 'Exports the filtered entries. Without dates: 1 January to today; without status: posted entries only.',
+    'journal_entry_owned' => 'Created by :source. Manage it there.',
+    'journal_entry_source' => 'Source',
+    'journal_source_salary_slip' => 'Salary slip :period — :employee',
+    'salary_slip_entry_is_draft' => 'The journal entry of this salary slip is still a draft. Post it in the journal first, then unpost the slip.',
 
     // Outbound payments (pain.001)
     'payments_outgoing' => 'Payments to send',

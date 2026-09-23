@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { router, useForm } from '@inertiajs/vue3'
+import { Link, router, useForm } from '@inertiajs/vue3'
 import AppLayout from '@/Components/AppLayout.vue'
 import Card from '@/Components/UI/Card.vue'
 import CardHeader from '@/Components/UI/CardHeader.vue'
@@ -373,12 +373,17 @@ function doDelete() {
               {{ value }}
               <Badge v-if="row.type === 'historical_summary'" variant="secondary">{{ t('historical_summary_badge') }}</Badge>
             </span>
+            <!-- Owned by another feature (e.g. a salary slip): edited or deleted there -->
+            <span v-if="row.source" class="block text-xs text-[hsl(var(--muted-foreground))]" data-testid="journal-source">
+              <Link v-if="row.source.url" :href="row.source.url" class="underline">{{ row.source.label }}</Link>
+              <template v-else>{{ row.source.label }}</template>
+            </span>
           </template>
           <template #cell-actions="{ row }">
             <div class="flex justify-end gap-1">
               <!-- Draft entry actions -->
               <template v-if="!row.is_posted">
-                <Tooltip v-if="can.edit" :content="t('edit')" side="left">
+                <Tooltip v-if="can.edit && !row.source" :content="t('edit')" side="left">
                   <Button variant="ghost" size="icon" @click="openEdit(row)">
                     <Pencil class="h-4 w-4" />
                   </Button>
@@ -388,7 +393,7 @@ function doDelete() {
                     <Check class="h-4 w-4 text-[hsl(var(--success))]" />
                   </Button>
                 </Tooltip>
-                <Tooltip v-if="can.delete" :content="t('delete')" side="left">
+                <Tooltip v-if="can.delete && !row.source" :content="t('delete')" side="left">
                   <Button variant="ghost" size="icon" @click="confirmDelete(row)">
                     <Trash2 class="h-4 w-4 text-[hsl(var(--destructive))]" />
                   </Button>
@@ -396,7 +401,7 @@ function doDelete() {
               </template>
               <!-- Posted entry actions (immutable - can only reverse) -->
               <template v-else>
-                <Tooltip v-if="can.edit" :content="t('tooltip_reverse_journal_entry')" side="left">
+                <Tooltip v-if="can.edit && !row.source" :content="t('tooltip_reverse_journal_entry')" side="left">
                   <Button variant="ghost" size="icon" @click="confirmReverse(row)">
                     <RotateCcw class="h-4 w-4" />
                   </Button>

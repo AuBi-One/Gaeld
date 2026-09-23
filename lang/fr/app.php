@@ -2302,6 +2302,10 @@ return [
     'accounts' => 'Comptes',
     'n_selected' => '{1} :count sélectionné|[2,*] :count sélectionnés',
     'journal_export_hint' => 'Exporte les écritures filtrées. Sans dates : du 1er janvier à aujourd\'hui ; sans statut : écritures comptabilisées uniquement.',
+    'journal_entry_owned' => 'Créée par :source ; gérez-la depuis cet écran.',
+    'journal_entry_source' => 'Origine',
+    'journal_source_salary_slip' => 'Fiche de salaire :period — :employee',
+    'salary_slip_entry_is_draft' => 'L\'écriture de cette fiche de salaire est encore un brouillon. Comptabilisez-la d\'abord dans le journal, puis annulez la fiche.',
 
     // Paiements sortants (pain.001)
     'payments_outgoing' => 'Paiements à émettre',

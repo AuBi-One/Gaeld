@@ -2299,6 +2299,10 @@ return [
     'accounts' => 'Conti',
     'n_selected' => '{1} :count selezionato|[2,*] :count selezionati',
     'journal_export_hint' => 'Esporta le registrazioni filtrate. Senza date: dal 1° gennaio a oggi; senza stato: solo registrazioni contabilizzate.',
+    'journal_entry_owned' => 'Creata da :source. Gestiscila da lì.',
+    'journal_entry_source' => 'Origine',
+    'journal_source_salary_slip' => 'Busta paga :period — :employee',
+    'salary_slip_entry_is_draft' => 'La registrazione di questa busta paga è ancora una bozza. Contabilizzala prima nel giornale, poi annulla la busta paga.',
 
     // Pagamenti in uscita (pain.001)
     'payments_outgoing' => 'Pagamenti da inviare',

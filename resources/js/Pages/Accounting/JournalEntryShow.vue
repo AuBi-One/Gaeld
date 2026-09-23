@@ -14,6 +14,7 @@ import { useFormatters } from '@/lib/useFormatters'
 
 const props = defineProps({
   entry: { type: Object, required: true },
+  source: { type: Object, default: null },
 })
 
 const { t } = useTranslations()
@@ -56,6 +57,13 @@ const totalCredit = computed(() => props.entry.lines?.reduce((total, line) => to
             <div>
               <dt class="text-[hsl(var(--muted-foreground))]">{{ t('description') }}</dt>
               <dd class="font-medium">{{ entry.description || '—' }}</dd>
+            </div>
+            <div v-if="source" class="sm:col-span-3" data-testid="journal-source">
+              <dt class="text-[hsl(var(--muted-foreground))]">{{ t('journal_entry_source') }}</dt>
+              <dd class="font-medium">
+                <Link v-if="source.url" :href="source.url" class="underline">{{ source.label }}</Link>
+                <span v-else>{{ source.label }}</span>
+              </dd>
             </div>
           </dl>
         </CardContent>

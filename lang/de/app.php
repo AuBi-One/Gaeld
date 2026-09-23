@@ -2295,6 +2295,10 @@ return [
     'accounts' => 'Konten',
     'n_selected' => '{1} :count ausgewählt|[2,*] :count ausgewählt',
     'journal_export_hint' => 'Exportiert die gefilterten Buchungen. Ohne Datum: 1. Januar bis heute; ohne Status: nur verbuchte Buchungen.',
+    'journal_entry_owned' => 'Erstellt durch :source. Dort bearbeiten.',
+    'journal_entry_source' => 'Herkunft',
+    'journal_source_salary_slip' => 'Lohnabrechnung :period — :employee',
+    'salary_slip_entry_is_draft' => 'Die Buchung dieser Lohnabrechnung ist noch ein Entwurf. Verbuchen Sie sie zuerst im Journal und stornieren Sie dann die Abrechnung.',
 
     // Ausgehende Zahlungen (pain.001)
     'payments_outgoing' => 'Zu sendende Zahlungen',

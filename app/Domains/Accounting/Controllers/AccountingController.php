@@ -10,6 +10,7 @@ use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Models\TransactionLine;
 use App\Domains\Accounting\Queries\JournalEntryQuery;
 use App\Domains\Accounting\Requests\StoreJournalEntryRequest;
+use App\Domains\Accounting\Services\JournalEntryReferences;
 use App\Domains\Accounting\Services\LedgerQueryService;
 use App\Domains\Accounting\Services\LedgerService;
 use App\Domains\Organizations\Enums\Permission;
@@ -22,6 +23,7 @@ use App\Support\PdfExportService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\Response as HttpResponse;
@@ -75,6 +77,12 @@ class AccountingController extends Controller
 
         $filters = JournalEntryQuery::params($request);
         $entries = JournalEntryQuery::list($filters);
+        // The record that owns an entry (e.g. a salary slip): shown, and edit/delete/reverse happen there.
+        // `source` is a display-only attribute (no such column); these models are never saved here.
+        $owners = app(JournalEntryReferences::class)->forMany(array_map(fn (JournalEntry $entry) => (string) $entry->id, $entries->items()));
+        foreach ($entries->items() as $entry) {
+            $entry->setAttribute('source', ($owners[(string) $entry->id] ?? null)?->toArray());
+        }
 
         $accounts = Account::where('is_active', true)
             ->orderBy('code')
@@ -119,6 +127,7 @@ class AccountingController extends Controller
 
         return Inertia::render('Accounting/JournalEntryShow', [
             'entry' => $journalEntry->load('lines.account'),
+            'source' => app(JournalEntryReferences::class)->for($journalEntry)?->toArray(),
         ]);
     }
 
@@ -184,6 +193,9 @@ class AccountingController extends Controller
         JournalEntry $journalEntry,
         CurrentOrganization $currentOrg,
     ): RedirectResponse {
+        if ($refused = $this->refuseOwned('update', $journalEntry)) {
+            return $refused;
+        }
         $this->authorize('update', $journalEntry);
 
         if ($journalEntry->is_posted) {
@@ -254,6 +266,9 @@ class AccountingController extends Controller
 
     public function reverseJournalEntry(JournalEntry $journalEntry, LedgerService $ledger): RedirectResponse
     {
+        if ($refused = $this->refuseOwned('reverse', $journalEntry)) {
+            return $refused;
+        }
         $this->authorize('reverse', $journalEntry);
 
         try {
@@ -268,6 +283,9 @@ class AccountingController extends Controller
 
     public function destroyJournalEntry(JournalEntry $journalEntry, LedgerService $ledger): RedirectResponse
     {
+        if ($refused = $this->refuseOwned('delete', $journalEntry)) {
+            return $refused;
+        }
         $this->authorize('delete', $journalEntry);
 
         try {
@@ -279,6 +297,18 @@ class AccountingController extends Controller
 
         return $this->toJournalList()
             ->with('success', __('app.journal_entry_deleted'));
+    }
+
+    /**
+     * An entry owned by another feature (the policy denies with a message): back to the list with that message.
+     */
+    private function refuseOwned(string $ability, JournalEntry $entry): ?RedirectResponse
+    {
+        $check = Gate::inspect($ability, $entry);
+
+        return $check->denied() && $check->message() !== null
+            ? $this->toJournalList()->with('error', $check->message())
+            : null;
     }
 
     /**
