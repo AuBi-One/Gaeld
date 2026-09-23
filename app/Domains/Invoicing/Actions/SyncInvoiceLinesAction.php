@@ -30,6 +30,8 @@ class SyncInvoiceLinesAction
                 'unit_price' => $lineData->unitPrice,
                 'vat_rate_id' => $applyVat ? $lineData->vatRateId : null,
                 'sort_order' => $lineData->sortOrder ?? $index,
+                'source_type' => $lineData->sourceId !== null ? $lineData->sourceType : null,
+                'source_id' => $lineData->sourceType !== null ? $lineData->sourceId : null,
             ]);
 
             if ($lineData->type === InvoiceLineType::Discount && $lineData->discountType === 'percentage') {

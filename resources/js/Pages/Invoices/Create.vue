@@ -35,6 +35,7 @@ const props = defineProps({
   defaultPaymentTermsDays: { type: Number, default: null },
   defaultVatRateId: { type: [String, Number], default: null },
   taxTreatments: { type: Array, default: () => [] },
+  lineSources: { type: Array, default: () => [] },
 })
 
 const { t } = useTranslations()
@@ -274,6 +275,8 @@ function onDueDateManualEdit() {
             :currency="form.currency"
             :default-vat-rate-id="defaultVatRateId"
             :tax-treatment="form.tax_treatment"
+            :line-sources="lineSources"
+            :customer-id="form.customer_id"
           />
 
           <!-- Notes & Terms -->

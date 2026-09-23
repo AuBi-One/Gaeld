@@ -24,6 +24,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $vat_rate_id
  * @property string|null $vat_amount
  * @property int $sort_order
+ * @property string|null $source_type Record the line was taken from (see InvoiceLineSources)
+ * @property string|null $source_id
  * @property-read Invoice $invoice
  * @property-read VatRate|null $vatRate
  */
@@ -43,6 +45,8 @@ class InvoiceLine extends Model
         'vat_rate_id',
         'vat_amount',
         'sort_order',
+        'source_type',
+        'source_id',
     ];
 
     protected function casts(): array

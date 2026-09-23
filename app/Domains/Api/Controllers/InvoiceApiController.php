@@ -462,6 +462,9 @@ class InvoiceApiController extends Controller
                 'discount_type' => $line->discount_type,
                 'vat_rate_id' => $line->vat_rate_id,
                 'sort_order' => $line->sort_order,
+                // Kept when an update does not send lines (see InvoiceLineSources).
+                'source_type' => $line->source_type,
+                'source_id' => $line->source_id,
             ])
             ->all();
     }

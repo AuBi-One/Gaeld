@@ -22,6 +22,8 @@ readonly class InvoiceLineData
         public ?string $discountType = null,
         public ?string $vatRateId = null,
         public ?int $sortOrder = null,
+        public ?string $sourceType = null,
+        public ?string $sourceId = null,
     ) {}
 
     /** @param  array<string, mixed>  $data */
@@ -37,6 +39,8 @@ readonly class InvoiceLineData
             discountType: $data['discount_type'] ?? null,
             vatRateId: $data['vat_rate_id'] ?? null,
             sortOrder: $data['sort_order'] ?? null,
+            sourceType: ($data['source_type'] ?? null) ?: null,
+            sourceId: isset($data['source_type'], $data['source_id']) && $data['source_type'] !== '' && $data['source_id'] !== '' ? (string) $data['source_id'] : null,
         );
     }
 }

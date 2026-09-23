@@ -33,6 +33,8 @@ const props = defineProps({
   justificatifUrl: { type: String, default: null },
   defaultVatRateId: { type: [String, Number], default: null },
   taxTreatments: { type: Array, default: () => [] },
+  lineSources: { type: Array, default: () => [] },
+  lineSourceRefs: { type: Object, default: () => ({}) },
 })
 
 const { t } = useTranslations()
@@ -56,6 +58,10 @@ const form = useForm({
     quantity: l.quantity,
     unit_price: l.unit_price,
     vat_rate_id: l.vat_rate_id ?? '',
+    source_type: l.source_type ?? null,
+    source_id: l.source_id ?? null,
+    // a reference whose record is no longer offered keeps a neutral caption
+    source_label: props.lineSourceRefs?.[l.id]?.label ?? (l.source_id ? `#${l.source_id}` : null),
   })),
   justificatif: null,
 })
@@ -205,6 +211,8 @@ function onCustomerCreated(customer) {
             :currency="form.currency"
             :default-vat-rate-id="defaultVatRateId"
             :tax-treatment="form.tax_treatment"
+            :line-sources="lineSources"
+            :customer-id="form.customer_id"
           />
 
           <!-- Notes & Terms -->

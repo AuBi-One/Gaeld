@@ -34,6 +34,8 @@ const props = defineProps({
   reminderCount: { type: Number, default: 0 },
   lastRemindedAt: { type: String, default: null },
   hasQrIban: { type: Boolean, default: false },
+  // Record each line was taken from, if any (invoice line id => {label, url})
+  lineSourceRefs: { type: Object, default: () => ({}) },
 })
 
 const { t } = useTranslations()
@@ -365,8 +367,13 @@ const bankAccountOptions = computed(() =>
         </CardHeader>
         <CardContent>
           <DataTable :columns="lineColumns" :rows="invoice?.lines ?? []">
-            <template #cell-description="{ value }">
+            <template #cell-description="{ value, row }">
               <span class="whitespace-pre-line break-words">{{ value }}</span>
+              <a
+                v-if="lineSourceRefs[row.id]"
+                :href="lineSourceRefs[row.id].url ?? undefined"
+                class="mt-0.5 block text-xs text-[hsl(var(--primary))] hover:underline"
+              >{{ lineSourceRefs[row.id].label }}</a>
             </template>
           </DataTable>
           <div class="mt-4 flex justify-end">

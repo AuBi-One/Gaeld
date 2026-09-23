@@ -17,6 +17,7 @@ use App\Domains\Invoicing\Models\Invoice;
 use App\Domains\Invoicing\Queries\InvoiceQuery;
 use App\Domains\Invoicing\Requests\StoreInvoiceRequest;
 use App\Domains\Invoicing\Requests\UpdateInvoiceRequest;
+use App\Domains\Invoicing\Services\InvoiceLineSources;
 use App\Domains\Invoicing\Services\InvoiceNumberGenerator;
 use App\Domains\Organizations\Services\CurrentOrganization;
 use App\Domains\Organizations\Services\OrganizationDocumentStorageService;
@@ -85,6 +86,7 @@ class InvoiceController extends Controller
             'defaultPaymentTermsDays' => $currentOrg->get()->default_payment_terms_days,
             'defaultVatRateId' => optional(VatRateQuery::active()->firstWhere('is_default', true))->id,
             'taxTreatments' => InvoiceTaxTreatment::options(),
+            'lineSources' => app(InvoiceLineSources::class)->forFrontend(),
         ]);
     }
 
@@ -206,6 +208,7 @@ class InvoiceController extends Controller
                 : null,
             'reminderCount' => $invoice->reminder_count ?? 0,
             'lastRemindedAt' => $invoice->last_reminded_at?->toISOString(),
+            'lineSourceRefs' => (object) app(InvoiceLineSources::class)->forInvoice($invoice),
         ]);
     }
 
@@ -222,6 +225,8 @@ class InvoiceController extends Controller
                 : null,
             'defaultVatRateId' => optional(VatRateQuery::active()->firstWhere('is_default', true))->id,
             'taxTreatments' => InvoiceTaxTreatment::options(),
+            'lineSources' => app(InvoiceLineSources::class)->forFrontend(),
+            'lineSourceRefs' => (object) app(InvoiceLineSources::class)->forInvoice($invoice),
         ]);
     }
 

@@ -6,9 +6,10 @@ import FormTextarea from '@/Components/UI/FormTextarea.vue'
 import FormSelect from '@/Components/UI/FormSelect.vue'
 import SearchableSelect from '@/Components/UI/SearchableSelect.vue'
 import Tooltip from '@/Components/UI/Tooltip.vue'
+import InvoiceLineSourcePicker from '@/Components/Invoices/InvoiceLineSourcePicker.vue'
 import { useTranslations } from '@/lib/useTranslations'
 import { useFormatters } from '@/lib/useFormatters'
-import { Plus, Trash2, HelpCircle, ArrowUp, ArrowDown, Copy } from 'lucide-vue-next'
+import { Plus, Trash2, HelpCircle, ArrowUp, ArrowDown, Copy, Link2, X } from 'lucide-vue-next'
 
 const props = defineProps({
   modelValue: { type: Array, required: true },
@@ -18,6 +19,9 @@ const props = defineProps({
   currency: { type: String, default: 'CHF' },
   defaultVatRateId: { type: [String, Number], default: null },
   taxTreatment: { type: String, default: 'standard' },
+  // Records lines can be taken from (registered by plugins): [{type, label, picker_url}]
+  lineSources: { type: Array, default: () => [] },
+  customerId: { type: [String, Number], default: '' },
 })
 
 const { t } = useTranslations()
@@ -171,6 +175,34 @@ function formattedLineAmount(line) {
   return amount === null ? '—' : formatCurrency(amount, props.currency)
 }
 
+// "Add line from …": the picked option prefills a line that keeps its source reference.
+const pickerSource = ref(null)
+
+function addLineFromSource({ source, option }) {
+  lines.value.push({
+    ...emptyLine('item'),
+    ...option.line,
+    vat_rate_id: option.line?.vat_rate_id ? String(option.line.vat_rate_id) : '',
+    source_type: source.type,
+    source_id: String(option.source_id),
+    source_label: option.reference ?? option.label,
+  })
+  pickerSource.value = null
+}
+
+function unlinkSource(line) {
+  line.source_type = null
+  line.source_id = null
+  line.source_label = null
+}
+
+// A record belongs to a client: another client means the lines are no longer taken from it.
+watch(() => props.customerId, (now, before) => {
+  if (before !== undefined && String(now ?? '') !== String(before ?? '')) {
+    lines.value.filter(line => line.source_id).forEach(unlinkSource)
+  }
+})
+
 defineExpose({ subtotal, vatTotal, total })
 </script>
 
@@ -229,6 +261,16 @@ defineExpose({ subtotal, vatTotal, total })
             :rows="2"
             required
           />
+          <p v-if="errors[`lines.${i}.source_id`] || errors[`lines.${i}.source_type`]" class="mt-1 text-xs text-[hsl(var(--destructive))]">
+            {{ errors[`lines.${i}.source_id`] || errors[`lines.${i}.source_type`] }}
+          </p>
+          <p v-if="line.source_id" class="mt-1 flex items-center gap-1 text-xs text-[hsl(var(--muted-foreground))]">
+            <Link2 class="h-3 w-3 shrink-0" />
+            <span class="truncate">{{ line.source_label }}</span>
+            <button type="button" class="rounded p-0.5 hover:text-[hsl(var(--foreground))]" :title="t('remove')" :aria-label="t('remove')" @click="unlinkSource(line)">
+              <X class="h-3 w-3" />
+            </button>
+          </p>
         </div>
         <template v-if="line.type !== 'text'">
           <div class="min-w-0 sm:col-span-1 xl:col-span-1">
@@ -333,6 +375,19 @@ defineExpose({ subtotal, vatTotal, total })
         <Plus class="mr-1 h-4 w-4" />
         {{ t('add_text_line') }}
       </Button>
+      <Button
+        v-for="source in lineSources"
+        :key="source.type"
+        type="button"
+        variant="outline"
+        size="sm"
+        :disabled="!customerId"
+        :title="customerId ? undefined : t('select_client')"
+        @click="pickerSource = source"
+      >
+        <Link2 class="mr-1 h-4 w-4" />
+        {{ source.label }}
+      </Button>
       <SearchableSelect
         v-if="catalogOptions.length > 0"
         id="add-from-catalog"
@@ -343,6 +398,14 @@ defineExpose({ subtotal, vatTotal, total })
         class="min-w-64 flex-1 sm:w-64 sm:flex-none"
       />
     </div>
+
+    <InvoiceLineSourcePicker
+      :open="pickerSource !== null"
+      :source="pickerSource"
+      :customer-id="customerId"
+      @close="pickerSource = null"
+      @pick="addLineFromSource"
+    />
 
     <!-- Running totals -->
     <div class="mt-4 space-y-2 border-t bg-[hsl(var(--muted)/0.2)] px-4 py-4 text-sm sm:ml-auto sm:max-w-sm">
