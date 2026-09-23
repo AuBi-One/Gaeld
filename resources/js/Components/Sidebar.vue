@@ -108,7 +108,10 @@ const navigation = computed(() => withPluginNavigation(baseNavigation()))
 function baseNavigation() {
   if (currentRole.value === 'employee') {
     return [
-      { key: 'expenses', href: '/expenses', icon: Receipt },
+      // A group (one child) so plugins can add entries next to it (e.g. expense claims).
+      { key: 'expenses', href: '/expenses', icon: Receipt, children: [
+        { key: 'expenses', href: '/expenses' },
+      ]},
       { key: 'salary_slips', href: '/payroll/salary-slips', icon: Briefcase },
       { type: 'group', label: 'nav_workspace' },
       { key: 'organizations', href: '/organizations', icon: Building2 },
