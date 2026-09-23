@@ -1,0 +1,405 @@
+<?php
+
+namespace Plugins\Offers\Services;
+
+use App\Domains\Accounting\Models\VatRate;
+use App\Domains\Contacts\Models\Contact;
+use App\Domains\Invoicing\Actions\CreateInvoiceAction;
+use App\Domains\Invoicing\DTOs\CreateInvoiceData;
+use App\Domains\Invoicing\Models\Invoice;
+use App\Domains\Invoicing\Services\InvoiceNumberGenerator;
+use App\Domains\Organizations\Models\Organization;
+use App\Support\Money;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
+use Plugins\Offers\Models\Offer;
+use Plugins\Offers\Models\OfferLine;
+use Plugins\Offers\Models\OfferTemplate;
+
+/**
+ * Offer lifecycle: drafts with lines and totals, status changes, revisions and
+ * conversion into a draft invoice. Totals use the invoice arithmetic (amount =
+ * qty × price, VAT per line) so the invoice made from an offer has the same total.
+ */
+class Offers
+{
+    private const MAX_NUMBER_RETRIES = 5;
+
+    /** Largest amount stored in the decimal(12,2) columns of offers and invoices, with a margin. */
+    private const MAX_AMOUNT = '999999999.99';
+
+    /** action => [allowed from, target] */
+    private const TRANSITIONS = [
+        'send' => [[Offer::STATUS_DRAFT], Offer::STATUS_SENT],
+        'revert' => [[Offer::STATUS_SENT], Offer::STATUS_DRAFT],
+        'accept' => [[Offer::STATUS_SENT], Offer::STATUS_ACCEPTED],
+        'refuse' => [[Offer::STATUS_SENT], Offer::STATUS_REFUSED],
+        'reopen' => [[Offer::STATUS_ACCEPTED, Offer::STATUS_REFUSED], Offer::STATUS_SENT],
+    ];
+
+    public function __construct(
+        private OfferPdf $pdf,
+        private CreateInvoiceAction $createInvoice,
+        private InvoiceNumberGenerator $invoiceNumbers,
+    ) {}
+
+    /**
+     * Create a draft, or update one. $data is validated by the controller.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function saveDraft(string $orgId, array $data, ?Offer $offer = null, ?int $userId = null): Offer
+    {
+        if ($offer !== null && ! $offer->isDraft()) {
+            throw ValidationException::withMessages(['status' => __('offers::of.only_draft_editable')]);
+        }
+
+        $contact = Contact::query()->where('organization_id', $orgId)->find((int) $data['contact_id']);
+        if ($contact === null) {
+            throw ValidationException::withMessages(['contact_id' => __('offers::of.contact_not_found')]);
+        }
+        $person = null;
+        if (! empty($data['contact_person_id'])) {
+            $person = $contact->contactPersons()->whereKey($data['contact_person_id'])->first();
+            if ($person === null) {
+                throw ValidationException::withMessages(['contact_person_id' => __('offers::of.person_not_of_contact')]);
+            }
+        }
+        $vat = null;
+        if (! empty($data['vat_rate_id'])) {
+            $vat = VatRate::query()->where('organization_id', $orgId)->find((int) $data['vat_rate_id']);
+            if ($vat === null || (! $vat->is_active && $vat->id !== $offer?->vat_rate_id)) {
+                throw ValidationException::withMessages(['vat_rate_id' => __('offers::of.vat_rate_not_found')]);
+            }
+        }
+
+        $attributes = [
+            'contact_id' => $contact->id,
+            'contact_person_id' => $person?->id,
+            'recipient' => [
+                'company' => $contact->name,
+                'attention' => $person?->full_name,
+                'email' => $person?->email ?: $contact->email,
+                'address' => $contact->address,
+                'postal_code' => $contact->postal_code,
+                'city' => $contact->city,
+                'country' => $contact->country ?? 'CH',
+            ],
+            'title' => $data['title'],
+            'intro' => $data['intro'] ?? null,
+            'closing' => $data['closing'] ?? null,
+            'notes' => $data['notes'] ?? null,
+            'offer_date' => $data['offer_date'],
+            'valid_until' => $data['valid_until'] ?? null,
+            'request_date' => $data['request_date'] ?? null,
+            'language' => $data['language'],
+            'currency' => $data['currency'],
+            'vat_rate_id' => $vat?->id,
+            'vat_rate' => $vat !== null ? (string) $vat->rate : null,
+            'template_id' => $offer !== null
+                ? $offer->template_id
+                : (empty($data['template_id']) ? null : OfferTemplate::query()->where('organization_id', $orgId)->whereKey($data['template_id'])->value('id')),
+        ];
+
+        $persist = fn (): Offer => DB::transaction(function () use ($orgId, $offer, $attributes, $data, $userId): Offer {
+            if ($offer === null) {
+                $offer = Offer::create($attributes + [
+                    'organization_id' => $orgId,
+                    'number' => $this->nextNumber($orgId, Carbon::parse($attributes['offer_date'])->year),
+                    'status' => Offer::STATUS_DRAFT,
+                    'created_by' => $userId,
+                ]);
+            } else {
+                $offer = Offer::query()->whereKey($offer->id)->lockForUpdate()->firstOrFail();
+                if (! $offer->isDraft()) {
+                    throw ValidationException::withMessages(['status' => __('offers::of.only_draft_editable')]);
+                }
+                $offer->update($attributes);
+            }
+            $this->syncLines($offer, $data['lines']);
+
+            return $offer->fresh(['lines']) ?? $offer;
+        });
+
+        return $offer === null ? $this->withNumberRetry($persist) : $persist();
+    }
+
+    /**
+     * Run $create, again when a concurrent insert took the number it picked.
+     *
+     * @param  callable(): Offer  $create
+     */
+    private function withNumberRetry(callable $create): Offer
+    {
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                return $create();
+            } catch (UniqueConstraintViolationException $e) {
+                if (! str_contains($e->getMessage(), 'of_offers_organization_id_number_unique') || $attempt >= self::MAX_NUMBER_RETRIES) {
+                    throw $e;
+                }
+            }
+        }
+    }
+
+    /** Next free number {prefix}-{year}-{NNN} for the organisation and year. */
+    public function nextNumber(string $orgId, int $year): string
+    {
+        $prefix = config('offers.number_prefix', 'OF')."-{$year}-";
+        $max = Offer::query()->withoutGlobalScopes()
+            ->where('organization_id', $orgId)
+            ->where('number', 'like', $prefix.'%')
+            ->pluck('number')
+            ->map(fn (string $n): int => (int) substr($n, strlen($prefix)))
+            ->max() ?? 0;
+
+        return $prefix.str_pad((string) ($max + 1), 3, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    private function syncLines(Offer $offer, array $lines): void
+    {
+        $offer->lines()->delete();
+        $rate = $offer->vat_rate;
+        $subtotal = '0.00';
+        $vatTotal = '0.00';
+
+        foreach (array_values($lines) as $i => $line) {
+            $isItem = ($line['type'] ?? OfferLine::TYPE_ITEM) === OfferLine::TYPE_ITEM;
+            $quantity = $isItem ? Money::round((string) $line['quantity']) : '0.00';
+            $price = $isItem ? Money::round((string) $line['unit_price']) : '0.00';
+            $amount = Money::multiply2($quantity, $price);
+            $vat = $isItem && $rate !== null ? Money::percentage($amount, (string) $rate) : '0.00';
+            if (Money::compare(Money::absoluteAmount($amount), self::MAX_AMOUNT) > 0) {
+                throw ValidationException::withMessages(["lines.{$i}.unit_price" => __('offers::of.amount_too_large')]);
+            }
+
+            $offer->lines()->create([
+                'sort' => $i,
+                'type' => $isItem ? OfferLine::TYPE_ITEM : OfferLine::TYPE_TEXT,
+                'label' => $line['label'] ?? null,
+                'description' => (string) $line['description'],
+                'quantity' => $quantity,
+                'unit' => $isItem ? ($line['unit'] ?? null) : null,
+                'unit_price' => $price,
+                'amount' => $amount,
+                'vat_amount' => $vat,
+            ]);
+            $subtotal = Money::add($subtotal, $amount);
+            $vatTotal = Money::add($vatTotal, $vat);
+        }
+
+        if (Money::compare(Money::absoluteAmount(Money::add($subtotal, $vatTotal)), self::MAX_AMOUNT) > 0) {
+            throw ValidationException::withMessages(['lines' => __('offers::of.amount_too_large')]);
+        }
+
+        $offer->update([
+            'subtotal' => $subtotal,
+            'vat_amount' => $vatTotal,
+            'total' => Money::add($subtotal, $vatTotal),
+        ]);
+    }
+
+    /** Apply a status change (send, revert, accept, refuse, reopen). */
+    public function transition(Offer $offer, string $action): Offer
+    {
+        if (! isset(self::TRANSITIONS[$action])) {
+            throw ValidationException::withMessages(['status' => __('offers::of.invalid_transition')]);
+        }
+        [$from, $to] = self::TRANSITIONS[$action];
+
+        $obsoleteDocument = null;
+        $newDocument = null;
+
+        try {
+            $offer = DB::transaction(function () use ($offer, $action, $from, $to, &$obsoleteDocument, &$newDocument): Offer {
+                $offer = Offer::query()->whereKey($offer->id)->lockForUpdate()->firstOrFail();
+                if (! in_array($offer->status, $from, true)) {
+                    throw ValidationException::withMessages(['status' => __('offers::of.invalid_transition')]);
+                }
+                if ($action === 'reopen' && $offer->status === Offer::STATUS_ACCEPTED && $offer->hasInvoice()) {
+                    throw ValidationException::withMessages(['status' => __('offers::of.already_invoiced')]);
+                }
+
+                $changes = ['status' => $to];
+                if ($action === 'send') {
+                    // A revision replaces its original once the client receives it.
+                    // Refused when the original was accepted meanwhile: two live offers otherwise.
+                    $original = $offer->supersedes_id !== null
+                        ? Offer::query()->whereKey($offer->supersedes_id)->lockForUpdate()->first()
+                        : null;
+                    if ($original !== null) {
+                        if (! in_array($original->status, [Offer::STATUS_SENT, Offer::STATUS_REFUSED], true)) {
+                            throw ValidationException::withMessages(['status' => __('offers::of.original_decided', ['number' => $original->number])]);
+                        }
+                        // decided_at is kept: set means the client had refused it (restored on revert).
+                        $original->update(['status' => Offer::STATUS_SUPERSEDED]);
+                    }
+                    $path = "offers/{$offer->organization_id}/{$offer->id}.pdf";
+                    Storage::disk('local')->put($path, $this->pdf->render($offer));
+                    $newDocument = $path;
+                    $changes += ['sent_at' => now(), 'document_path' => $path, 'document_name' => $offer->number.'.pdf'];
+                } elseif ($action === 'revert') {
+                    // The original gets its status back (sent, or refused) while its revision is a draft.
+                    $original = $offer->supersedes_id !== null
+                        ? Offer::query()->whereKey($offer->supersedes_id)->where('status', Offer::STATUS_SUPERSEDED)->lockForUpdate()->first()
+                        : null;
+                    $original?->update(['status' => $original->decided_at !== null ? Offer::STATUS_REFUSED : Offer::STATUS_SENT]);
+                    $obsoleteDocument = $offer->source === 'app' ? $offer->document_path : null;
+                    $changes += ['sent_at' => null, 'document_path' => null, 'document_name' => null];
+                } elseif ($action === 'accept' || $action === 'refuse') {
+                    $changes += ['decided_at' => now()];
+                } elseif ($action === 'reopen') {
+                    $changes += ['decided_at' => null];
+                }
+                $offer->update($changes);
+
+                return $offer;
+            });
+        } catch (\Throwable $e) {
+            if ($newDocument !== null) {
+                Storage::disk('local')->delete($newDocument);
+            }
+            throw $e;
+        }
+
+        if ($obsoleteDocument !== null) {
+            Storage::disk('local')->delete($obsoleteDocument);
+        }
+
+        return $offer;
+    }
+
+    /**
+     * Start a revision of a sent or refused offer: a draft copy with a new number.
+     * The original becomes superseded when the revision is sent.
+     */
+    public function revise(Offer $offer, ?int $userId = null): Offer
+    {
+        return $this->withNumberRetry(fn (): Offer => DB::transaction(function () use ($offer, $userId): Offer {
+            $offer = Offer::query()->whereKey($offer->id)->lockForUpdate()->firstOrFail();
+            if (! in_array($offer->status, [Offer::STATUS_SENT, Offer::STATUS_REFUSED], true)) {
+                throw ValidationException::withMessages(['status' => __('offers::of.invalid_transition')]);
+            }
+            if (Offer::query()->where('supersedes_id', $offer->id)->exists()) {
+                throw ValidationException::withMessages(['status' => __('offers::of.revision_exists')]);
+            }
+
+            $today = now()->startOfDay();
+            $validity = $offer->valid_until !== null ? (int) $offer->offer_date->diffInDays($offer->valid_until) : null;
+            $copy = $offer->replicate(['number', 'status', 'sent_at', 'decided_at', 'invoice_id', 'document_path', 'document_name', 'source', 'external_ref', 'created_by']);
+            $copy->fill([
+                'number' => $this->nextNumber($offer->organization_id, $today->year),
+                'status' => Offer::STATUS_DRAFT,
+                'offer_date' => $today->toDateString(),
+                'valid_until' => $validity !== null ? $today->copy()->addDays($validity)->toDateString() : null,
+                'supersedes_id' => $offer->id,
+                'source' => 'app',
+                'created_by' => $userId,
+            ]);
+            $copy->save();
+            foreach ($offer->lines as $line) {
+                $copy->lines()->create($line->only(['sort', 'type', 'label', 'description', 'quantity', 'unit', 'unit_price', 'amount', 'vat_amount']));
+            }
+
+            return $copy;
+        }));
+    }
+
+    /** Create a draft invoice with the lines of an accepted offer and link it. */
+    public function createInvoice(Offer $offer): Invoice
+    {
+        return DB::transaction(function () use ($offer): Invoice {
+            $offer = Offer::query()->whereKey($offer->id)->lockForUpdate()->firstOrFail();
+            if ($offer->status !== Offer::STATUS_ACCEPTED) {
+                throw ValidationException::withMessages(['status' => __('offers::of.invoice_needs_accepted')]);
+            }
+            if ($offer->hasInvoice()) {
+                throw ValidationException::withMessages(['status' => __('offers::of.already_invoiced')]);
+            }
+            // The invoice takes the rate's current percentage: it must still be the one offered.
+            $vatRateId = null;
+            if ($offer->vat_rate !== null) {
+                $rate = $offer->vat_rate_id !== null ? VatRate::query()->find($offer->vat_rate_id) : null;
+                if ($rate === null || Money::compare((string) $rate->rate, (string) $offer->vat_rate) !== 0) {
+                    throw ValidationException::withMessages(['status' => __('offers::of.vat_rate_changed', ['rate' => (string) $offer->vat_rate])]);
+                }
+                $vatRateId = (string) $rate->id;
+            }
+
+            $organization = Organization::query()->findOrFail($offer->organization_id);
+            $today = now()->startOfDay();
+            $lines = $offer->lines->map(fn (OfferLine $line): array => [
+                'type' => $line->isItem() ? 'item' : 'text',
+                'description' => $this->invoiceDescription($line),
+                'quantity' => $line->isItem() ? (string) $line->quantity : '0',
+                'unit_price' => $line->isItem() ? (string) $line->unit_price : '0',
+                'vat_rate_id' => $line->isItem() ? $vatRateId : null,
+                'sort_order' => $line->sort,
+            ])->values()->all();
+
+            $invoice = $this->createInvoice->execute(CreateInvoiceData::fromArray([
+                'organization_id' => $offer->organization_id,
+                'customer_id' => $offer->contact_id,
+                'number' => $this->invoiceNumbers->next($offer->organization_id, null, $today->year),
+                'issue_date' => $today->toDateString(),
+                'due_date' => $today->copy()->addDays($organization->default_payment_terms_days ?? 30)->toDateString(),
+                'currency' => $offer->currency,
+                'notes' => trans('offers::of.invoice_note', ['number' => $offer->number, 'title' => $offer->title], $offer->language),
+                'lines' => $lines,
+            ]));
+
+            $offer->update(['invoice_id' => $invoice->id]);
+
+            return $invoice;
+        });
+    }
+
+    private function invoiceDescription(OfferLine $line): string
+    {
+        $text = trim(($line->label ? $line->label.' ' : '').$line->description);
+
+        return $line->isItem() && $line->unit ? "{$text} ({$line->unit})" : $text;
+    }
+
+    /** Store an offer's texts and lines as a new template. */
+    public function saveAsTemplate(Offer $offer, string $name): OfferTemplate
+    {
+        $validity = $offer->valid_until !== null ? (int) $offer->offer_date->diffInDays($offer->valid_until) : (int) config('offers.default_validity_days', 30);
+
+        return OfferTemplate::create([
+            'organization_id' => $offer->organization_id,
+            'name' => $name,
+            'title' => $offer->title,
+            'intro' => $offer->intro,
+            'closing' => $offer->closing,
+            'validity_days' => max(1, min(365, $validity)),
+            'lines' => $offer->lines->map(fn (OfferLine $l): array => [
+                'type' => $l->type,
+                'label' => $l->label,
+                'description' => $l->description,
+                'quantity' => $l->isItem() ? (string) $l->quantity : null,
+                'unit' => $l->unit,
+                'unit_price' => $l->isItem() ? (string) $l->unit_price : null,
+            ])->values()->all(),
+            'is_default' => false,
+        ]);
+    }
+
+    /** Delete a draft (drafts have no stored document). */
+    public function delete(Offer $offer): void
+    {
+        DB::transaction(function () use ($offer): void {
+            $offer = Offer::query()->whereKey($offer->id)->lockForUpdate()->firstOrFail();
+            if (! $offer->isDraft()) {
+                throw ValidationException::withMessages(['status' => __('offers::of.only_draft_deletable')]);
+            }
+            $offer->delete();
+        });
+    }
+}

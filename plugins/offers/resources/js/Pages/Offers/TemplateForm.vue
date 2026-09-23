@@ -1,0 +1,83 @@
+<script setup>
+import { useForm } from '@inertiajs/vue3'
+import AppLayout from '@/Components/AppLayout.vue'
+import Card from '@/Components/UI/Card.vue'
+import CardHeader from '@/Components/UI/CardHeader.vue'
+import CardTitle from '@/Components/UI/CardTitle.vue'
+import CardContent from '@/Components/UI/CardContent.vue'
+import Button from '@/Components/UI/Button.vue'
+import FormInput from '@/Components/UI/FormInput.vue'
+import FormTextarea from '@/Components/UI/FormTextarea.vue'
+import Breadcrumb from '@/Components/UI/Breadcrumb.vue'
+import OfferLines from '../../Components/OfferLines.vue'
+import { useTranslations } from '@/lib/useTranslations'
+
+const { t } = useTranslations()
+
+const props = defineProps({
+  template: { type: Object, default: null },
+})
+
+const form = useForm({
+  name: props.template?.name ?? '',
+  title: props.template?.title ?? '',
+  intro: props.template?.intro ?? '',
+  closing: props.template?.closing ?? '',
+  validity_days: props.template?.validity_days ?? 30,
+  is_default: props.template?.is_default ?? false,
+  lines: (props.template?.lines ?? []).map(l => ({ type: l.type, label: l.label ?? '', description: l.description ?? '', quantity: l.quantity ?? '', unit: l.unit ?? '', unit_price: l.unit_price ?? '' })),
+})
+
+function submit() {
+  form.transform(data => ({
+    ...data,
+    lines: data.lines.map(l => l.type === 'item'
+      ? { type: 'item', label: l.label || null, description: l.description, quantity: String(l.quantity), unit: l.unit || null, unit_price: String(l.unit_price) }
+      : { type: 'text', label: l.label || null, description: l.description }),
+  }))
+  if (props.template) form.put(`/offer-templates/${props.template.id}`)
+  else form.post('/offer-templates')
+}
+</script>
+
+<template>
+  <AppLayout :title="template ? t('of_edit_template') : t('of_new_template')" help-page="invoices">
+    <Breadcrumb :items="[{ label: t('of_title_offers'), href: '/offers' }, { label: t('of_templates_title'), href: '/offer-templates' }, { label: template ? template.name : t('of_new_template') }]" class="mb-4" />
+
+    <form class="max-w-5xl space-y-6" @submit.prevent="submit">
+      <Card>
+        <CardHeader><CardTitle>{{ template ? t('of_edit_template') : t('of_new_template') }}</CardTitle></CardHeader>
+        <CardContent class="grid gap-4 sm:grid-cols-2">
+          <FormInput v-model="form.name" id="of-tpl-name" :label="t('of_template_name')" :error="form.errors.name" required />
+          <FormInput v-model="form.validity_days" id="of-tpl-validity" type="number" min="1" max="365" :label="t('of_validity_days')" :error="form.errors.validity_days" required />
+          <FormInput v-model="form.title" id="of-tpl-title" :label="t('of_subject')" :error="form.errors.title" class="sm:col-span-2" />
+          <label class="flex items-center gap-2 text-sm sm:col-span-2">
+            <input v-model="form.is_default" type="checkbox" class="h-4 w-4 accent-[hsl(var(--primary))]" />
+            {{ t('of_is_default') }}
+          </label>
+          <FormTextarea v-model="form.intro" id="of-tpl-intro" :label="t('of_intro')" :error="form.errors.intro" :rows="6" class="sm:col-span-2" />
+          <p class="text-xs text-[hsl(var(--muted-foreground))] sm:col-span-2">{{ t('of_texts_hint') }}</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>{{ t('of_lines') }}</CardTitle></CardHeader>
+        <CardContent>
+          <OfferLines v-model="form.lines" :errors="form.errors" :show-totals="false" id-prefix="of-tpl-line" />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>{{ t('of_closing') }}</CardTitle></CardHeader>
+        <CardContent>
+          <FormTextarea v-model="form.closing" id="of-tpl-closing" :label="t('of_closing')" label-class="sr-only" :error="form.errors.closing" :rows="4" />
+        </CardContent>
+      </Card>
+
+      <div class="flex justify-end gap-2">
+        <Button as="a" href="/offer-templates" variant="outline">{{ t('cancel') }}</Button>
+        <Button type="submit" :loading="form.processing">{{ t('save') }}</Button>
+      </div>
+    </form>
+  </AppLayout>
+</template>

@@ -1,0 +1,13 @@
+{
+    "name": "Offers",
+    "slug": "offers",
+    "version": "0.1.0",
+    "description": "Offers (quotes) to clients: templates, items, PDF document, tracking (sent, accepted, refused, superseded) and conversion into a draft invoice.",
+    "author": "AuBi-One",
+    "provider": "Plugins\\Offers\\OffersServiceProvider",
+    "enabled": true,
+    "frontend": {
+        "pages": "resources/js/Pages/**/*.vue"
+    },
+    "requires": []
+}

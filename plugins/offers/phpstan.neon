@@ -1,0 +1,9 @@
+# Static analysis for the plugin (the core phpstan.neon covers app/ only):
+#   ./vendor/bin/phpstan analyse -c plugins/offers/phpstan.neon
+includes:
+    - ../../phpstan.neon
+parameters:
+    paths:
+        - src/
+    bootstrapFiles:
+        - phpstan-bootstrap.php
