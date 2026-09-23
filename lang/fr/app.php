@@ -2293,6 +2293,12 @@ return [
     'password_min_length' => 'Le mot de passe doit comporter au moins 8 caractères.',
     'passwords_do_not_match' => 'Les mots de passe ne correspondent pas.',
     'no_journal_lines' => 'Aucune ligne d\'écriture comptable trouvée.',
+    'journal_entries_count' => '{1} :count écriture|[2,*] :count écritures',
+    'expand_all' => 'Tout déplier',
+    'collapse_all' => 'Tout replier',
+    'per_page' => 'Par page',
+    'all_accounts' => 'Tous les comptes',
+    'filter_contains' => 'contient…',
 
     // Paiements sortants (pain.001)
     'payments_outgoing' => 'Paiements à émettre',

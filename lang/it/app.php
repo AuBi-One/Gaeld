@@ -2290,6 +2290,12 @@ return [
     'password_min_length' => 'La password deve contenere almeno 8 caratteri.',
     'passwords_do_not_match' => 'Le password non corrispondono.',
     'no_journal_lines' => 'Nessuna riga di scrittura contabile trovata.',
+    'journal_entries_count' => '{1} :count registrazione|[2,*] :count registrazioni',
+    'expand_all' => 'Espandi tutto',
+    'collapse_all' => 'Comprimi tutto',
+    'per_page' => 'Per pagina',
+    'all_accounts' => 'Tutti i conti',
+    'filter_contains' => 'contiene…',
 
     // Pagamenti in uscita (pain.001)
     'payments_outgoing' => 'Pagamenti da inviare',

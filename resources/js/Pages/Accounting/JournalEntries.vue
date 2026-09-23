@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { router, useForm } from '@inertiajs/vue3'
 import AppLayout from '@/Components/AppLayout.vue'
 import Card from '@/Components/UI/Card.vue'
@@ -15,28 +15,114 @@ import ConfirmDialog from '@/Components/UI/ConfirmDialog.vue'
 import Button from '@/Components/UI/Button.vue'
 import FormInput from '@/Components/UI/FormInput.vue'
 import FormSelect from '@/Components/UI/FormSelect.vue'
+import SearchableSelect from '@/Components/UI/SearchableSelect.vue'
 import HelpText from '@/Components/HelpText.vue'
 import EmptyState from '@/Components/UI/EmptyState.vue'
 import { useFormatters } from '@/lib/useFormatters'
 import { useTranslations } from '@/lib/useTranslations'
-import { BookText, Plus, Check, RotateCcw, Trash2, Pencil, HelpCircle } from 'lucide-vue-next'
+import { buildAccountOptions } from '@/lib/accountOptions'
+import { BookText, Plus, Check, RotateCcw, Trash2, Pencil, HelpCircle, ChevronsUpDown, ChevronsDownUp, X } from 'lucide-vue-next'
 
 const props = defineProps({
   entries: Object,
   accounts: { type: Array, default: () => [] },
   can: { type: Object, default: () => ({ create: false, edit: false, delete: false }) },
+  filterAccounts: { type: Array, default: () => [] },
+  filters: { type: Object, default: () => ({}) },
+  perPageOptions: { type: Array, default: () => [20, 50, 100, 200] },
 })
 
 const { t } = useTranslations()
 const { formatCurrency, formatDate } = useFormatters()
 
+// Column key -> sort key understood by JournalEntryQuery
+const sortKeys = { date: 'date', reference: 'reference', description: 'description', is_posted: 'status', amount: 'amount' }
+
 const columns = computed(() => [
-  { key: 'date', label: t('date'), format: v => formatDate(v) },
-  { key: 'reference', label: t('reference') },
-  { key: 'description', label: t('description') },
-  { key: 'is_posted', label: t('status') },
+  { key: 'date', label: t('date'), format: v => formatDate(v), sortable: true },
+  { key: 'reference', label: t('reference'), sortable: true },
+  { key: 'description', label: t('description'), sortable: true },
+  { key: 'amount', label: t('amount'), format: v => formatCurrency(v ?? 0), class: 'text-right', sortable: true },
+  { key: 'is_posted', label: t('status'), sortable: true },
   { key: 'actions', label: '', align: 'right' },
 ])
+
+// Filters, sorting and page size live in the URL (server-side, see JournalEntryQuery)
+const filterForm = ref({
+  from: props.filters.from ?? '',
+  to: props.filters.to ?? '',
+  account: props.filters.account ?? null,
+  reference: props.filters.reference ?? '',
+  description: props.filters.description ?? '',
+  status: props.filters.status ?? '',
+})
+
+const activeSortColumn = computed(() =>
+  Object.keys(sortKeys).find(k => sortKeys[k] === (props.filters.sort ?? 'date')) ?? 'date',
+)
+
+const hasActiveFilters = computed(() => Object.values(filterForm.value).some(v => v !== '' && v !== null))
+
+function loadList(overrides = {}) {
+  const params = {
+    ...filterForm.value,
+    sort: props.filters.sort ?? 'date',
+    direction: props.filters.direction ?? 'desc',
+    per_page: props.filters.per_page ?? props.perPageOptions[0],
+    ...overrides,
+  }
+  // Keep the URL short: drop empty values and the defaults
+  const query = Object.fromEntries(Object.entries(params).filter(([k, v]) =>
+    v !== '' && v !== null && v !== undefined
+    && !(k === 'sort' && v === 'date' && params.direction === 'desc')
+    && !(k === 'direction' && v === 'desc' && params.sort === 'date')
+    && !(k === 'per_page' && Number(v) === props.perPageOptions[0]),
+  ))
+  router.get('/accounting/journal-entries', query, { only: ['entries', 'filters'], preserveState: true, preserveScroll: true, replace: true })
+}
+
+let filterTimer = null
+watch(filterForm, () => {
+  clearTimeout(filterTimer)
+  filterTimer = setTimeout(() => loadList(), 350)
+}, { deep: true })
+onBeforeUnmount(() => clearTimeout(filterTimer))
+
+function clearFilters() {
+  filterForm.value = { from: '', to: '', account: null, reference: '', description: '', status: '' }
+}
+
+function handleSort({ sort, direction }) {
+  clearTimeout(filterTimer)
+  loadList({ sort: sortKeys[sort] ?? 'date', direction })
+}
+
+function changePerPage(value) {
+  clearTimeout(filterTimer)
+  loadList({ per_page: Number(value) })
+}
+
+const filterAccountOptions = computed(() =>
+  buildAccountOptions(props.filterAccounts).map(o => ({ ...o, value: String(o.value) })),
+)
+
+const statusOptions = computed(() => [
+  { value: '', label: t('all_statuses') },
+  { value: 'draft', label: t('draft') },
+  { value: 'posted', label: t('posted') },
+])
+
+// Expand all / collapse all; the choice is remembered in this browser
+const EXPAND_KEY = 'gaeld.journal.expandAll'
+const table = ref(null)
+const allExpanded = ref(false)
+try { allExpanded.value = localStorage.getItem(EXPAND_KEY) === '1' } catch { /* storage unavailable */ }
+
+function setAllExpanded(value) {
+  allExpanded.value = value
+  value ? table.value?.expandAll() : table.value?.collapseAll()
+  try { localStorage.setItem(EXPAND_KEY, value ? '1' : '0') } catch { /* storage unavailable */ }
+}
 
 const accountOptions = computed(() => [
   { value: '', label: t('select_placeholder') },
@@ -184,10 +270,79 @@ function doDelete() {
       <ExportDropdown base-url="/accounting/journal-entries/export" />
     </div>
 
+    <!-- Filters -->
+    <Card class="mb-4" data-testid="journal-filters">
+      <CardContent class="pt-6">
+        <div class="grid grid-cols-2 gap-4 lg:grid-cols-6">
+          <FormInput id="filter_from" v-model="filterForm.from" type="date" :label="t('from')" />
+          <FormInput id="filter_to" v-model="filterForm.to" type="date" :label="t('to')" />
+          <div class="col-span-2">
+            <SearchableSelect
+              id="filter_account"
+              v-model="filterForm.account"
+              :label="t('account')"
+              :options="filterAccountOptions"
+              group-key="group"
+              :placeholder="t('all_accounts')"
+              force-searchable
+            />
+          </div>
+          <FormSelect id="filter_status" v-model="filterForm.status" :label="t('status')" :options="statusOptions" />
+          <div class="flex items-end">
+            <Button v-if="hasActiveFilters" type="button" variant="outline" size="sm" class="w-full" @click="clearFilters">
+              <X class="mr-1 h-4 w-4" /> {{ t('clear_filters') }}
+            </Button>
+          </div>
+          <div class="col-span-2 sm:col-span-1 lg:col-span-3">
+            <FormInput id="filter_reference" v-model="filterForm.reference" :label="t('reference')" :placeholder="t('filter_contains')" />
+          </div>
+          <div class="col-span-2 sm:col-span-1 lg:col-span-3">
+            <FormInput id="filter_description" v-model="filterForm.description" :label="t('description')" :placeholder="t('filter_contains')" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+
     <Card>
-      <CardHeader><CardTitle>{{ t('journal_entries') }}</CardTitle></CardHeader>
+      <CardHeader>
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle>
+            {{ t('journal_entries') }}
+            <span class="ml-2 text-sm font-normal text-[hsl(var(--muted-foreground))]" data-testid="journal-count">{{ t('journal_entries_count', { count: entries?.total ?? 0 }) }}</span>
+          </CardTitle>
+          <div class="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" size="sm" data-testid="expand-all" @click="setAllExpanded(true)">
+              <ChevronsUpDown class="mr-1 h-4 w-4" /> {{ t('expand_all') }}
+            </Button>
+            <Button type="button" variant="outline" size="sm" data-testid="collapse-all" @click="setAllExpanded(false)">
+              <ChevronsDownUp class="mr-1 h-4 w-4" /> {{ t('collapse_all') }}
+            </Button>
+            <label class="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]" for="per_page">
+              {{ t('per_page') }}
+              <select
+                id="per_page"
+                :value="filters.per_page ?? perPageOptions[0]"
+                class="h-9 rounded-md border border-[hsl(var(--input))] bg-transparent px-2 text-sm text-[hsl(var(--foreground))]"
+                @change="changePerPage($event.target.value)"
+              >
+                <option v-for="n in perPageOptions" :key="n" :value="n">{{ n }}</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </CardHeader>
       <CardContent>
-        <DataTable :columns="columns" :rows="entries?.data ?? []" :pagination="entries" expandable>
+        <DataTable
+          ref="table"
+          :columns="columns"
+          :rows="entries?.data ?? []"
+          :pagination="entries"
+          :sort="activeSortColumn"
+          :direction="filters.direction ?? 'desc'"
+          expandable
+          :expanded-by-default="allExpanded"
+          @sort="handleSort"
+        >
           <template #empty>
             <EmptyState
               :icon="BookText"

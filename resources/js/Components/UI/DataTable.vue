@@ -83,6 +83,11 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  // Expand every row whenever the rows change (e.g. after paging); see expandAll()/collapseAll()
+  expandedByDefault: {
+    type: Boolean,
+    default: false,
+  },
   tableMinWidth: {
     type: [String, Number],
     default: null,
@@ -194,9 +199,19 @@ function toggleRow(id) {
 // Row expansion
 const expandedRows = ref(new Set())
 
-watch(() => props.rows, () => {
+function expandAll() {
+  expandedRows.value = new Set(props.rows.map((r) => r.id))
+}
+
+function collapseAll() {
   expandedRows.value = new Set()
-})
+}
+
+watch(() => props.rows, () => {
+  props.expandedByDefault ? expandAll() : collapseAll()
+}, { immediate: true })
+
+defineExpose({ expandAll, collapseAll })
 
 function toggleExpand(id) {
   const next = new Set(expandedRows.value)

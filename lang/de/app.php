@@ -2286,6 +2286,12 @@ return [
     'password_min_length' => 'Das Passwort muss mindestens 8 Zeichen lang sein.',
     'passwords_do_not_match' => 'Die Passwörter stimmen nicht überein.',
     'no_journal_lines' => 'Keine Buchungszeilen gefunden.',
+    'journal_entries_count' => '{1} :count Buchung|[2,*] :count Buchungen',
+    'expand_all' => 'Alle aufklappen',
+    'collapse_all' => 'Alle zuklappen',
+    'per_page' => 'Pro Seite',
+    'all_accounts' => 'Alle Konten',
+    'filter_contains' => 'enthält…',
 
     // Ausgehende Zahlungen (pain.001)
     'payments_outgoing' => 'Zu sendende Zahlungen',

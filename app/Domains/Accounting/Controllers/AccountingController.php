@@ -8,6 +8,7 @@ use App\Domains\Accounting\Enums\AccountType;
 use App\Domains\Accounting\Models\Account;
 use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Models\TransactionLine;
+use App\Domains\Accounting\Queries\JournalEntryQuery;
 use App\Domains\Accounting\Requests\StoreJournalEntryRequest;
 use App\Domains\Accounting\Services\LedgerQueryService;
 use App\Domains\Accounting\Services\LedgerService;
@@ -72,9 +73,8 @@ class AccountingController extends Controller
     {
         $this->authorize('viewAny', JournalEntry::class);
 
-        $entries = JournalEntry::with('lines.account')
-            ->orderByDesc('date')
-            ->paginate(config('accounting.pagination.default'));
+        $filters = JournalEntryQuery::params($request);
+        $entries = JournalEntryQuery::list($filters);
 
         $accounts = Account::where('is_active', true)
             ->orderBy('code')
@@ -88,9 +88,23 @@ class AccountingController extends Controller
 
         $user = $request->user();
 
+        // Filter choices include inactive accounts: old entries may still use them.
+        // Lazy, so partial reloads of the list (filters, sort, paging) skip the query.
+        $filterAccounts = fn () => Account::orderBy('code')
+            ->get(['id', 'code', 'name', 'type'])
+            ->map(fn (Account $a) => [
+                'id' => $a->id,
+                'code' => $a->code,
+                'name' => $a->display_name,
+                'type' => $a->type->value,
+            ]);
+
         return Inertia::render('Accounting/JournalEntries', [
             'entries' => $entries,
             'accounts' => $accounts,
+            'filterAccounts' => $filterAccounts,
+            'filters' => $filters,
+            'perPageOptions' => JournalEntryQuery::PER_PAGE_OPTIONS,
             'can' => [
                 'create' => $user?->can('create', JournalEntry::class) ?? false,
                 'edit' => $user?->hasPermissionTo(Permission::AccountingEdit) ?? false,
@@ -161,7 +175,7 @@ class AccountingController extends Controller
             return $this->backWithError($e);
         }
 
-        return redirect()->route('accounting.journal')
+        return $this->toJournalList()
             ->with('success', __($isPosted ? 'app.journal_entry_posted' : 'app.journal_entry_draft_saved'));
     }
 
@@ -173,7 +187,7 @@ class AccountingController extends Controller
         $this->authorize('update', $journalEntry);
 
         if ($journalEntry->is_posted) {
-            return redirect()->route('accounting.journal')
+            return $this->toJournalList()
                 ->with('error', __('app.cannot_edit_posted_entry'));
         }
 
@@ -220,7 +234,7 @@ class AccountingController extends Controller
             return $this->backWithError($e);
         }
 
-        return redirect()->route('accounting.journal')
+        return $this->toJournalList()
             ->with('success', __('app.journal_entry_updated'));
     }
 
@@ -234,7 +248,7 @@ class AccountingController extends Controller
             return $this->backWithError($e);
         }
 
-        return redirect()->route('accounting.journal')
+        return $this->toJournalList()
             ->with('success', __('app.journal_entry_posted'));
     }
 
@@ -248,7 +262,7 @@ class AccountingController extends Controller
             return $this->backWithError($e);
         }
 
-        return redirect()->route('accounting.journal')
+        return $this->toJournalList()
             ->with('success', __('app.journal_entry_reversed'));
     }
 
@@ -263,8 +277,20 @@ class AccountingController extends Controller
             return $this->backWithError($e);
         }
 
-        return redirect()->route('accounting.journal')
+        return $this->toJournalList()
             ->with('success', __('app.journal_entry_deleted'));
+    }
+
+    /**
+     * Back to the journal list, keeping its filters, sort and page when the action came from there.
+     */
+    private function toJournalList(): RedirectResponse
+    {
+        $previous = url()->previous();
+
+        return str_starts_with($previous, route('accounting.journal').'?')
+            ? redirect()->to($previous)
+            : redirect()->route('accounting.journal');
     }
 
     public function trialBalance(Request $request, LedgerQueryService $ledgerService, CurrentOrganization $currentOrg): Response

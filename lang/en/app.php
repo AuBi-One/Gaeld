@@ -2364,6 +2364,12 @@ return [
     'password_min_length' => 'Password must be at least 8 characters.',
     'passwords_do_not_match' => 'Passwords do not match.',
     'no_journal_lines' => 'No journal entry lines found.',
+    'journal_entries_count' => '{1} :count entry|[2,*] :count entries',
+    'expand_all' => 'Expand all',
+    'collapse_all' => 'Collapse all',
+    'per_page' => 'Per page',
+    'all_accounts' => 'All accounts',
+    'filter_contains' => 'contains…',
 
     // Outbound payments (pain.001)
     'payments_outgoing' => 'Payments to send',
