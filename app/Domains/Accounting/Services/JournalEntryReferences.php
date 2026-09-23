@@ -43,7 +43,7 @@ final class JournalEntryReferences
      *
      * @param  class-string<TModel>  $model
      * @param  Closure(TModel): JournalEntryReference  $describe
-     * @param  list<string>  $with  Relations to eager-load for $describe
+     * @param  array<int|string, string|Closure>  $with  Relations to eager-load for $describe (as for Builder::with)
      */
     public function registerColumn(string $model, string $column, Closure $describe, array $with = []): self
     {
