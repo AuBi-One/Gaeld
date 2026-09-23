@@ -95,17 +95,21 @@ class PostPayrollAction
         );
 
         // Itemised reimbursements are re-checked against their source (still
-        // open, same amount) and debited to the account the source names;
-        // the manual remainder keeps the general expense account.
+        // open, same amount) and debited, summed per account, to the account
+        // the source names; the manual remainder keeps the general expense account.
         $reimbursementAmount = (string) ($deductions['reimbursement_amount'] ?? '0.00');
         $items = $this->currentReimbursementItems($slip);
+        $byAccount = [];
         foreach ($items as $item) {
             $reimbursementAmount = Money::subtract($reimbursementAmount, $item['amount']);
+            $byAccount[$item['account_code']][] = $item;
+        }
+        foreach ($byAccount as $accountCode => $group) {
             $lines[] = new JournalLineData(
-                accountId: (string) $this->ledgerQuery->resolveAccount($orgId, $item['account_code'])->id,
-                debit: $item['amount'],
+                accountId: (string) $this->ledgerQuery->resolveAccount($orgId, (string) $accountCode)->id,
+                debit: array_reduce($group, fn (string $sum, array $item): string => Money::add($sum, $item['amount']), Money::zero()),
                 credit: '0',
-                description: "Expense reimbursement: {$employee->fullName()} — {$item['label']}",
+                description: mb_strimwidth("Expense reimbursement: {$employee->fullName()} — ".implode(', ', array_column($group, 'label')), 0, 255, '…'),
             );
         }
         if (Money::isPositive($reimbursementAmount)) {

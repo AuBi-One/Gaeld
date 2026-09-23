@@ -36,8 +36,8 @@ const adjustments = ref(Object.fromEntries(
   props.employees.map(employee => [employee.id, {
     unpaid_leave_days: 0,
     reimbursement_amount: '0.00',
-    // All open items are proposed; untick to leave a claim open.
-    reimbursement_item_ids: itemsFor(employee.id).map(item => item.id),
+    // Nothing is ticked by default: tick the claims to pay with this salary.
+    reimbursement_item_ids: [],
   }])
 ))
 
@@ -46,6 +46,17 @@ function toggleItem(employeeId, itemId) {
   adjustment.reimbursement_item_ids = adjustment.reimbursement_item_ids.includes(itemId)
     ? adjustment.reimbursement_item_ids.filter(id => id !== itemId)
     : [...adjustment.reimbursement_item_ids, itemId]
+}
+
+function allItemsSelected(employeeId) {
+  const selected = adjustmentFor(employeeId).reimbursement_item_ids
+  return itemsFor(employeeId).every(item => selected.includes(item.id))
+}
+
+function toggleAllItems(employeeId) {
+  adjustmentFor(employeeId).reimbursement_item_ids = allItemsSelected(employeeId)
+    ? []
+    : itemsFor(employeeId).map(item => item.id)
 }
 
 function selectedItemsTotal(employeeId) {
@@ -372,6 +383,15 @@ async function postSlips() {
                 <p class="font-mono text-xs">{{ formatCurrency(selectedItemsTotal(emp.id)) }}</p>
               </div>
               <p class="text-xs text-[hsl(var(--muted-foreground))]">{{ t('reimbursement_items_desc') }}</p>
+              <label class="flex cursor-pointer items-center gap-3 rounded-md border-b border-[hsl(var(--border))] px-2 py-1.5 text-xs font-medium">
+                <input
+                  type="checkbox"
+                  :checked="allItemsSelected(emp.id)"
+                  class="h-4 w-4 accent-[hsl(var(--primary))]"
+                  @change="toggleAllItems(emp.id)"
+                />
+                {{ allItemsSelected(emp.id) ? t('deselect_all') : t('select_all') }}
+              </label>
               <label
                 v-for="item in itemsFor(emp.id)"
                 :key="item.id"
