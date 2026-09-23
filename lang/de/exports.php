@@ -104,6 +104,7 @@ return [
     'journal_entries' => [
         'title' => 'Journalbuchungen',
         'period' => 'Journalbuchungen — :from bis :to',
+        'drafts' => 'Entwürfe (nicht verbucht)',
     ],
     'salary_slip' => [
         'title' => 'Lohnabrechnung',

@@ -104,6 +104,7 @@ return [
     'journal_entries' => [
         'title' => 'Journal Entries',
         'period' => 'Journal Entries — :from to :to',
+        'drafts' => 'Drafts (not posted)',
     ],
     'salary_slip' => [
         'title' => 'Salary Slip',

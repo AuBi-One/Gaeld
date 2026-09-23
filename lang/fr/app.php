@@ -2299,6 +2299,9 @@ return [
     'per_page' => 'Par page',
     'all_accounts' => 'Tous les comptes',
     'filter_contains' => 'contient…',
+    'accounts' => 'Comptes',
+    'n_selected' => '{1} :count sélectionné|[2,*] :count sélectionnés',
+    'journal_export_hint' => 'Exporte les écritures filtrées. Sans dates : du 1er janvier à aujourd\'hui ; sans statut : écritures comptabilisées uniquement.',
 
     // Paiements sortants (pain.001)
     'payments_outgoing' => 'Paiements à émettre',

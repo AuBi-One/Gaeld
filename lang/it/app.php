@@ -2296,6 +2296,9 @@ return [
     'per_page' => 'Per pagina',
     'all_accounts' => 'Tutti i conti',
     'filter_contains' => 'contiene…',
+    'accounts' => 'Conti',
+    'n_selected' => '{1} :count selezionato|[2,*] :count selezionati',
+    'journal_export_hint' => 'Esporta le registrazioni filtrate. Senza date: dal 1° gennaio a oggi; senza stato: solo registrazioni contabilizzate.',
 
     // Pagamenti in uscita (pain.001)
     'payments_outgoing' => 'Pagamenti da inviare',

@@ -2292,6 +2292,9 @@ return [
     'per_page' => 'Pro Seite',
     'all_accounts' => 'Alle Konten',
     'filter_contains' => 'enthält…',
+    'accounts' => 'Konten',
+    'n_selected' => '{1} :count ausgewählt|[2,*] :count ausgewählt',
+    'journal_export_hint' => 'Exportiert die gefilterten Buchungen. Ohne Datum: 1. Januar bis heute; ohne Status: nur verbuchte Buchungen.',
 
     // Ausgehende Zahlungen (pain.001)
     'payments_outgoing' => 'Zu sendende Zahlungen',

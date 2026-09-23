@@ -104,6 +104,7 @@ return [
     'journal_entries' => [
         'title' => 'Écritures comptables',
         'period' => 'Écritures comptables — du :from au :to',
+        'drafts' => 'Brouillons (non comptabilisés)',
     ],
     'salary_slip' => [
         'title' => 'Fiche de salaire',

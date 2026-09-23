@@ -15,7 +15,7 @@ import ConfirmDialog from '@/Components/UI/ConfirmDialog.vue'
 import Button from '@/Components/UI/Button.vue'
 import FormInput from '@/Components/UI/FormInput.vue'
 import FormSelect from '@/Components/UI/FormSelect.vue'
-import SearchableSelect from '@/Components/UI/SearchableSelect.vue'
+import MultiSelect from '@/Components/UI/MultiSelect.vue'
 import HelpText from '@/Components/HelpText.vue'
 import EmptyState from '@/Components/UI/EmptyState.vue'
 import { useFormatters } from '@/lib/useFormatters'
@@ -51,7 +51,7 @@ const columns = computed(() => [
 const filterForm = ref({
   from: props.filters.from ?? '',
   to: props.filters.to ?? '',
-  account: props.filters.account ?? null,
+  accounts: (props.filters.accounts ?? []).map(String),
   reference: props.filters.reference ?? '',
   description: props.filters.description ?? '',
   status: props.filters.status ?? '',
@@ -61,11 +61,22 @@ const activeSortColumn = computed(() =>
   Object.keys(sortKeys).find(k => sortKeys[k] === (props.filters.sort ?? 'date')) ?? 'date',
 )
 
-const hasActiveFilters = computed(() => Object.values(filterForm.value).some(v => v !== '' && v !== null))
+const hasActiveFilters = computed(() => Object.values(filterForm.value).some(v => (Array.isArray(v) ? v.length > 0 : v !== '' && v !== null)))
+
+// Filters as query parameters; accounts as "12,63"
+function filterParams(filters) {
+  return { ...filters, accounts: (filters.accounts ?? []).join(',') }
+}
+
+// Export uses the applied filters (without them: posted entries of the current year)
+const exportParams = computed(() => {
+  const { from, to, reference, description, status } = props.filters
+  return filterParams({ from, to, accounts: props.filters.accounts, reference, description, status })
+})
 
 function loadList(overrides = {}) {
   const params = {
-    ...filterForm.value,
+    ...filterParams(filterForm.value),
     sort: props.filters.sort ?? 'date',
     direction: props.filters.direction ?? 'desc',
     per_page: props.filters.per_page ?? props.perPageOptions[0],
@@ -89,7 +100,7 @@ watch(filterForm, () => {
 onBeforeUnmount(() => clearTimeout(filterTimer))
 
 function clearFilters() {
-  filterForm.value = { from: '', to: '', account: null, reference: '', description: '', status: '' }
+  filterForm.value = { from: '', to: '', accounts: [], reference: '', description: '', status: '' }
 }
 
 function handleSort({ sort, direction }) {
@@ -267,7 +278,9 @@ function doDelete() {
         <Plus class="mr-1 h-4 w-4" />
         {{ t('new_journal_entry') }}
       </Button>
-      <ExportDropdown base-url="/accounting/journal-entries/export" />
+      <Tooltip :content="t('journal_export_hint')" side="left">
+        <ExportDropdown base-url="/accounting/journal-entries/export" :params="exportParams" />
+      </Tooltip>
     </div>
 
     <!-- Filters -->
@@ -277,14 +290,14 @@ function doDelete() {
           <FormInput id="filter_from" v-model="filterForm.from" type="date" :label="t('from')" />
           <FormInput id="filter_to" v-model="filterForm.to" type="date" :label="t('to')" />
           <div class="col-span-2">
-            <SearchableSelect
-              id="filter_account"
-              v-model="filterForm.account"
-              :label="t('account')"
+            <MultiSelect
+              id="filter_accounts"
+              v-model="filterForm.accounts"
+              :label="t('accounts')"
               :options="filterAccountOptions"
               group-key="group"
               :placeholder="t('all_accounts')"
-              force-searchable
+              :search-placeholder="t('filter_contains')"
             />
           </div>
           <FormSelect id="filter_status" v-model="filterForm.status" :label="t('status')" :options="statusOptions" />

@@ -358,13 +358,19 @@ class AccountingController extends Controller
 
         abort_unless(in_array($format, ['pdf', 'csv'], true), 404);
 
-        $orgId = $currentOrg->id();
-        $from = $request->input('from', now()->startOfYear()->toDateString());
-        $to = $request->input('to', now()->toDateString());
+        // The list filters apply; without them: posted entries from 1 January to today.
+        $params = JournalEntryQuery::params($request);
+        $from = $params['from'] ?? now()->startOfYear()->toDateString();
+        $to = $params['to'] ?? now()->toDateString();
+        $drafts = $params['status'] === 'draft';
+        $suffix = $drafts ? '-drafts' : '';
 
-        $entries = JournalEntry::query()
-            ->where('is_posted', true)
-            ->whereBetween('date', [$from, $to])
+        $entries = JournalEntryQuery::filtered([
+            ...$params,
+            'from' => $from,
+            'to' => $to,
+            'status' => $drafts ? 'draft' : 'posted',
+        ])
             ->with('lines.account')
             ->orderBy('date')
             ->orderBy('created_at')
@@ -373,7 +379,7 @@ class AccountingController extends Controller
         $org = $currentOrg->get();
 
         if ($format === 'csv') {
-            $headers = ['Date', 'Reference', 'Description', 'Account Code', 'Account Name', 'Debit', 'Credit'];
+            $headers = ['Date', 'Reference', 'Description', 'Account Code', 'Account Name', 'Debit', 'Credit', 'Status'];
             $rows = [];
             foreach ($entries as $entry) {
                 foreach ($entry->lines as $line) {
@@ -385,11 +391,12 @@ class AccountingController extends Controller
                         $line->account->name ?? '',
                         (string) $line->debit,
                         (string) $line->credit,
+                        $entry->is_posted ? 'posted' : 'draft',
                     ];
                 }
             }
 
-            return $csv->export($headers, $rows, "journal-entries-{$from}-{$to}.csv");
+            return $csv->export($headers, $rows, "journal-entries-{$from}-{$to}{$suffix}.csv");
         }
 
         return $pdf->download('exports.journal-entries', [
@@ -397,6 +404,7 @@ class AccountingController extends Controller
             'fromDate' => $from,
             'toDate' => $to,
             'entries' => $entries,
-        ], "journal-entries-{$from}-{$to}.pdf");
+            'statusLabel' => $drafts ? __('exports.journal_entries.drafts') : null,
+        ], "journal-entries-{$from}-{$to}{$suffix}.pdf");
     }
 }

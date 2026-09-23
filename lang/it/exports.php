@@ -104,6 +104,7 @@ return [
     'journal_entries' => [
         'title' => 'Registrazioni contabili',
         'period' => 'Registrazioni contabili — da :from a :to',
+        'drafts' => 'Bozze (non contabilizzate)',
     ],
     'salary_slip' => [
         'title' => 'Busta paga',

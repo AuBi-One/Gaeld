@@ -78,9 +78,30 @@ class JournalEntryListTest extends TestCase
             $this->journalLine($this->bank, '0.00', '50.00'),
         ], 'P-1', 'Two expense lines');
 
-        $this->assertReferences(['account' => (string) $this->expense->id], ['P-1']);
-        $this->assertReferences(['account' => (string) $this->revenue->id], ['S-1']);
-        $this->assertReferences(['account' => (string) $this->bank->id], ['P-1', 'S-1']);
+        $this->assertReferences(['accounts' => (string) $this->expense->id], ['P-1']);
+        $this->assertReferences(['accounts' => (string) $this->revenue->id], ['S-1']);
+        $this->assertReferences(['accounts' => (string) $this->bank->id], ['P-1', 'S-1']);
+    }
+
+    public function test_several_accounts_match_entries_on_any_of_them(): void
+    {
+        $this->sale('2026-03-01', 'S-1', 'Sale', '100.00');
+        $this->postJournalEntry('2026-03-02', [
+            $this->journalLine($this->expense, '50.00', '0.00'),
+            $this->journalLine($this->bank, '0.00', '50.00'),
+        ], 'P-1', 'Purchase');
+        $unused = $this->account('9999', 'Unused', AccountType::Expense);
+
+        $this->assertReferences(['accounts' => "{$this->expense->id},{$this->revenue->id}"], ['P-1', 'S-1']);
+        $this->assertReferences(['accounts' => "{$this->expense->id},{$unused->id}"], ['P-1']);
+        $this->assertReferences(['accounts' => "{$this->bank->id},{$this->expense->id},{$this->revenue->id}"], ['P-1', 'S-1']);
+        $this->assertReferences(['accounts' => (string) $unused->id], []);
+        $this->list(['accounts' => "{$this->expense->id},x,,{$this->expense->id}"])->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.accounts', [$this->expense->id]));
+        $this->list(['accounts' => implode(',', range(1, 60))])->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.accounts', range(1, 50)));
+        // Filters combine with AND
+        $this->assertReferences(['accounts' => "{$this->expense->id},{$this->revenue->id}", 'description' => 'purchase'], ['P-1']);
     }
 
     public function test_reference_and_description_contain_case_insensitive_with_literal_wildcards(): void
@@ -97,6 +118,13 @@ class JournalEntryListTest extends TestCase
         $this->assertReferences(['reference' => 'inv', 'description' => 'licence'], ['INV-2026-002']);
 
         $this->sale('2026-03-04', 'WITH\\SLASH', 'Backslash', '100.00');
+        $this->postJournalEntry('2026-03-05', [
+            $this->journalLine($this->expense, '10.00', '0.00', 'Printer toner'),
+            $this->journalLine($this->bank, '0.00', '10.00'),
+        ], 'LINE-1', 'Office supplies');
+        $this->assertReferences(['description' => 'toner'], ['LINE-1']);
+        $this->assertReferences(['description' => 'office'], ['LINE-1']);
+        $this->assertReferences(['description' => 'toner', 'reference' => 'INV'], []);
         $this->assertReferences(['reference' => '\\'], ['WITH\\SLASH']);
     }
 
@@ -189,7 +217,7 @@ class JournalEntryListTest extends TestCase
         $this->list([
             'from' => '2026-02-31',
             'to' => 'yesterday',
-            'account' => '1 OR 1=1',
+            'accounts' => '1 OR 1=1',
             'status' => 'deleted',
             'sort' => 'organization_id',
             'direction' => 'sideways',
@@ -199,17 +227,17 @@ class JournalEntryListTest extends TestCase
             ->where('entries.total', 1)
             ->where('filters.from', null)
             ->where('filters.to', null)
-            ->where('filters.account', null)
+            ->where('filters.accounts', [])
             ->where('filters.status', null)
             ->where('filters.sort', 'date')
             ->where('filters.direction', 'desc')
             ->where('filters.reference', ''));
 
-        $this->list(['sort' => ['amount'], 'account' => ['1'], 'direction' => ['asc']])->assertOk()
+        $this->list(['sort' => ['amount'], 'accounts' => ['1'], 'direction' => ['asc']])->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->where('entries.total', 1)
                 ->where('filters.sort', 'date')
-                ->where('filters.account', null));
+                ->where('filters.accounts', []));
     }
 
     public function test_actions_return_to_the_filtered_list(): void
@@ -263,6 +291,71 @@ class JournalEntryListTest extends TestCase
 
         $this->assertReferences([], ['MINE']);
         $this->assertReferences(['reference' => 'THEIRS'], []);
+    }
+
+    public function test_export_without_filters_keeps_posted_entries_of_the_year(): void
+    {
+        $this->travelTo('2026-06-30');
+        $this->sale('2025-12-31', 'OLD', 'Last year', '10.00');
+        $this->sale('2026-03-01', 'POSTED', 'Posted', '10.00');
+        $this->draft('2026-03-02', 'DRAFT');
+
+        $csv = $this->exportCsv([]);
+        $this->assertStringContainsString('POSTED', $csv);
+        $this->assertStringNotContainsString('DRAFT', $csv);
+        $this->assertStringNotContainsString('OLD', $csv);
+    }
+
+    public function test_export_applies_the_list_filters(): void
+    {
+        $this->sale('2026-03-01', 'S-1', 'Consulting', '10.00');
+        $this->postJournalEntry('2026-03-02', [
+            $this->journalLine($this->expense, '5.00', '0.00', 'Printer toner'),
+            $this->journalLine($this->bank, '0.00', '5.00'),
+        ], 'P-1', 'Office');
+        $this->draft('2026-03-03', 'DRAFT-1');
+
+        $byAccount = $this->exportCsv(['from' => '2026-01-01', 'to' => '2026-12-31', 'accounts' => (string) $this->expense->id]);
+        $this->assertStringContainsString('P-1', $byAccount);
+        $this->assertStringNotContainsString('S-1', $byAccount);
+
+        $byReference = $this->exportCsv(['from' => '2026-01-01', 'to' => '2026-12-31', 'reference' => 's-']);
+        $this->assertStringContainsString('S-1', $byReference);
+        $this->assertStringNotContainsString('P-1', $byReference);
+
+        $byText = $this->exportCsv(['from' => '2026-01-01', 'to' => '2026-12-31', 'description' => 'toner']);
+        $this->assertStringContainsString('P-1', $byText);
+        $this->assertStringNotContainsString('S-1', $byText);
+
+        $drafts = $this->exportCsv(['from' => '2026-01-01', 'to' => '2026-12-31', 'status' => 'draft']);
+        $this->assertStringContainsString('DRAFT-1', $drafts);
+        $this->assertStringContainsString(';draft', $drafts);
+        $this->assertStringNotContainsString('S-1', $drafts);
+
+        $this->actAsOrg()->get('/accounting/journal-entries/export/pdf?from=2026-01-01&to=2026-12-31&reference=S-')->assertOk();
+        $this->actAsOrg()->get('/accounting/journal-entries/export/pdf?from=2026-01-01&to=2026-12-31&status=draft')->assertOk();
+    }
+
+    /** @param array<string, string> $query */
+    private function exportCsv(array $query): string
+    {
+        $response = $this->actAsOrg()->get('/accounting/journal-entries/export/csv?'.http_build_query($query));
+        $response->assertOk();
+
+        return (string) $response->streamedContent();
+    }
+
+    private function draft(string $date, string $reference): void
+    {
+        app(LedgerService::class)->createDraft($this->organization->id, new JournalEntryData(
+            date: $date,
+            reference: $reference,
+            description: 'Draft',
+            lines: [
+                $this->journalLine($this->bank, '5.00', '0.00'),
+                $this->journalLine($this->revenue, '0.00', '5.00'),
+            ],
+        ));
     }
 
     /** @param array<string, mixed> $query */

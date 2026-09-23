@@ -7,7 +7,7 @@
 </head>
 <body>
     @include('exports._header', [
-        'docTitle' => __('exports.journal_entries.title'),
+        'docTitle' => __('exports.journal_entries.title').(empty($statusLabel) ? '' : ' — '.$statusLabel),
         'docPeriod' => __('exports.journal_entries.period', ['from' => $fromDate, 'to' => $toDate]),
     ])
 

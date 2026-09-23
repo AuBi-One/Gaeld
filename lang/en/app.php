@@ -2370,6 +2370,9 @@ return [
     'per_page' => 'Per page',
     'all_accounts' => 'All accounts',
     'filter_contains' => 'contains…',
+    'accounts' => 'Accounts',
+    'n_selected' => '{1} :count selected|[2,*] :count selected',
+    'journal_export_hint' => 'Exports the filtered entries. Without dates: 1 January to today; without status: posted entries only.',
 
     // Outbound payments (pain.001)
     'payments_outgoing' => 'Payments to send',
