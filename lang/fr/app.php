@@ -2307,7 +2307,8 @@ return [
     'journal_entry_owned' => 'Créée par :source ; gérez-la depuis cet écran.',
     'journal_entry_source' => 'Origine',
     'journal_source_salary_slip' => 'Fiche de salaire :period — :employee',
-    'salary_slip_entry_is_draft' => 'L\'écriture de cette fiche de salaire est encore un brouillon. Comptabilisez-la d\'abord dans le journal, puis annulez la fiche.',
+    'unpost_salary_slip_draft_confirm' => 'Dé-comptabiliser cette fiche de salaire ? Son écriture est encore un brouillon : elle sera supprimée. Une nouvelle comptabilisation reconstruit l\'écriture à partir du calcul de la paie ; les lignes saisies à la main ou migrées sont remplacées.',
+    'salary_slip_unposted_draft_deleted' => 'Fiche de salaire dé-comptabilisée ; son écriture en brouillon a été supprimée. Une nouvelle comptabilisation reconstruit l\'écriture à partir du calcul de la paie.',
 
     // Paiements sortants (pain.001)
     'payments_outgoing' => 'Paiements à émettre',

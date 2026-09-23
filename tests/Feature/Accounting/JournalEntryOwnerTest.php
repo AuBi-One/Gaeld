@@ -138,18 +138,33 @@ class JournalEntryOwnerTest extends TestCase
         $this->assertSame([], app(JournalEntryReferences::class)->forMany([]));
     }
 
-    public function test_a_slip_whose_entry_is_still_a_draft_is_not_unposted(): void
+    public function test_unposting_a_slip_whose_entry_is_still_a_draft_deletes_the_draft(): void
     {
         [$slip, $entry] = $this->slipWithDraftEntry();
 
-        $this->actAsOrg()->from("/payroll/salary-slips/{$slip->id}")
-            ->post("/payroll/salary-slips/{$slip->id}/unpost")
-            ->assertRedirect("/payroll/salary-slips/{$slip->id}")
-            ->assertSessionHas('error', fn (string $message) => str_contains($message, 'still a draft'));
+        $this->actAsOrg()->get("/payroll/salary-slips/{$slip->id}")->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('slip.journal_entry.is_posted', false));
 
-        $this->assertNotNull($slip->fresh()->posted_at);
-        $this->assertSame($entry->id, $slip->fresh()->journal_entry_id);
-        $this->assertDatabaseHas('journal_entries', ['id' => $entry->id, 'is_posted' => false]);
+        $this->actAsOrg()->post("/payroll/salary-slips/{$slip->id}/unpost")
+            ->assertRedirect("/payroll/salary-slips/{$slip->id}")
+            ->assertSessionHas('success', fn (string $message) => str_contains($message, 'draft journal entry was deleted')
+                && str_contains($message, 'rebuilds the entry'));
+
+        $slip->refresh();
+        $this->assertNull($slip->posted_at);
+        $this->assertNull($slip->journal_entry_id);
+        $this->assertDatabaseMissing('journal_entries', ['id' => $entry->id]);
+        $this->assertSame(0, JournalEntry::where('reference', 'like', 'REV-%')->count());
+    }
+
+    public function test_unposting_a_slip_with_a_posted_entry_keeps_the_usual_message(): void
+    {
+        [$slip, $entry] = $this->slipWithDraftEntry();
+        app(LedgerService::class)->postDraft($entry);
+
+        $this->actAsOrg()->post("/payroll/salary-slips/{$slip->id}/unpost")
+            ->assertSessionHas('success', 'Salary slip unposted. You can now correct or delete it.');
+        $this->assertSame(1, JournalEntry::where('reference', 'REV-SLIP-DRAFT')->count());
     }
 
     /** @return array{0: SalarySlip, 1: JournalEntry} */

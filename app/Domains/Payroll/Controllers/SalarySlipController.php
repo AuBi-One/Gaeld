@@ -160,6 +160,9 @@ class SalarySlipController extends Controller
             return redirect()->back()->with('error', __('app.salary_slip_not_posted'));
         }
 
+        $draftDropped = $slip->journal_entry_id !== null
+            && $slip->journalEntry()->where('is_posted', false)->exists();
+
         try {
             $action->execute($slip);
         } catch (\DomainException $e) {
@@ -170,12 +173,14 @@ class SalarySlipController extends Controller
             return redirect()->back()->with('error', $e->getMessage());
         }
 
+        $message = $draftDropped ? 'app.salary_slip_unposted_draft_deleted' : 'app.salary_slip_unposted';
+
         if ($request->wantsJson()) {
-            return new JsonResponse(['message' => __('app.salary_slip_unposted'), 'id' => $slip->id]);
+            return new JsonResponse(['message' => __($message), 'id' => $slip->id]);
         }
 
         return redirect()->route('payroll.salarySlips.show', $slip)
-            ->with('success', __('app.salary_slip_unposted'));
+            ->with('success', __($message));
     }
 
     public function destroy(SalarySlip $slip): RedirectResponse

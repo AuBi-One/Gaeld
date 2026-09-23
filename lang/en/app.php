@@ -2378,7 +2378,8 @@ return [
     'journal_entry_owned' => 'Created by :source. Manage it there.',
     'journal_entry_source' => 'Source',
     'journal_source_salary_slip' => 'Salary slip :period — :employee',
-    'salary_slip_entry_is_draft' => 'The journal entry of this salary slip is still a draft. Post it in the journal first, then unpost the slip.',
+    'unpost_salary_slip_draft_confirm' => 'Unpost this salary slip? Its journal entry is still a draft: it will be deleted. Posting the slip again rebuilds the entry from the payroll calculation, so lines entered by hand or migrated are replaced.',
+    'salary_slip_unposted_draft_deleted' => 'Salary slip unposted; its draft journal entry was deleted. Posting the slip again rebuilds the entry from the payroll calculation.',
 
     // Outbound payments (pain.001)
     'payments_outgoing' => 'Payments to send',

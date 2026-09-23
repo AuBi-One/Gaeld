@@ -2300,7 +2300,8 @@ return [
     'journal_entry_owned' => 'Erstellt durch :source. Dort bearbeiten.',
     'journal_entry_source' => 'Herkunft',
     'journal_source_salary_slip' => 'Lohnabrechnung :period — :employee',
-    'salary_slip_entry_is_draft' => 'Die Buchung dieser Lohnabrechnung ist noch ein Entwurf. Verbuchen Sie sie zuerst im Journal und stornieren Sie dann die Abrechnung.',
+    'unpost_salary_slip_draft_confirm' => 'Verbuchung dieser Gehaltsabrechnung rückgängig machen? Die Buchung ist noch ein Entwurf und wird gelöscht. Beim erneuten Verbuchen wird die Buchung aus der Lohnberechnung neu erstellt; von Hand erfasste oder migrierte Zeilen werden ersetzt.',
+    'salary_slip_unposted_draft_deleted' => 'Verbuchung rückgängig gemacht; der Buchungsentwurf wurde gelöscht. Beim erneuten Verbuchen wird die Buchung aus der Lohnberechnung neu erstellt.',
 
     // Ausgehende Zahlungen (pain.001)
     'payments_outgoing' => 'Zu sendende Zahlungen',

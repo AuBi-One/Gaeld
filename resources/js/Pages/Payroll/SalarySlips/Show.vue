@@ -213,7 +213,7 @@ function deductionRow(label, employee, employer) {
     <ConfirmDialog
       :open="showUnpostDialog"
       :title="t('unpost')"
-      :message="t('unpost_salary_slip_confirm')"
+      :message="slip.journal_entry && !slip.journal_entry.is_posted ? t('unpost_salary_slip_draft_confirm') : t('unpost_salary_slip_confirm')"
       :confirm-label="t('unpost')"
       :processing="unposting"
       @confirm="unpost"

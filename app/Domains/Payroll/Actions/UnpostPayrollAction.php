@@ -27,20 +27,20 @@ class UnpostPayrollAction
             throw new \DomainException('Only a posted salary slip can be unposted.');
         }
 
-        // A draft entry (e.g. loaded by a data migration for review) may hold lines the payroll
-        // calculator would not reproduce: post it in the journal first, then unpost the slip.
-        if ($slip->journal_entry_id && $slip->journalEntry()->where('is_posted', false)->exists()) {
-            throw new \DomainException(__('app.salary_slip_entry_is_draft'));
-        }
-
         DB::transaction(function () use ($slip): void {
             if ($slip->journal_entry_id) {
                 $slip->loadMissing('journalEntry.lines');
-                $reversal = $this->ledger->reverseEntry(
-                    $slip->journalEntry,
-                    "Unposting salary slip for {$slip->period_month}/{$slip->period_year}",
-                );
-                $this->ledger->postDraft($reversal);
+                if ($slip->journalEntry->is_posted) {
+                    $reversal = $this->ledger->reverseEntry(
+                        $slip->journalEntry,
+                        "Unposting salary slip for {$slip->period_month}/{$slip->period_year}",
+                    );
+                    $this->ledger->postDraft($reversal);
+                } else {
+                    // Nothing was booked yet: drop the draft. Posting the slip again rebuilds
+                    // the entry from the payroll calculation (e.g. migrated lines are replaced).
+                    $this->ledger->deleteDraft($slip->journalEntry);
+                }
             }
 
             $slip->update([
