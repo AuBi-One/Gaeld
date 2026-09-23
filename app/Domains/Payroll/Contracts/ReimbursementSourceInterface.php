@@ -12,7 +12,8 @@ use App\Domains\Payroll\Models\SalarySlip;
  *
  * Item shape: id, date (Y-m-d), label, amount (decimal string) and, from
  * resolve(), account_code: the ledger account debited when the slip is posted
- * (typically the liability the claim was booked to).
+ * (e.g. the cost account, or a liability booked earlier). Optional splits
+ * (list of account_code + amount, summing to amount) debit several accounts.
  */
 interface ReimbursementSourceInterface
 {
@@ -27,7 +28,7 @@ interface ReimbursementSourceInterface
      * Trusted amounts and accounts for the selected items.
      *
      * @param  list<string>  $itemIds
-     * @return list<array{id: string, date: string, label: string, amount: string, account_code: string}>
+     * @return list<array{id: string, date: string, label: string, amount: string, account_code: string, splits?: list<array{account_code: string, amount: string}>}>
      *
      * @throws \DomainException When an item is unknown, not open or not owed to this employee
      */

@@ -95,14 +95,17 @@ class PostPayrollAction
         );
 
         // Itemised reimbursements are re-checked against their source (still
-        // open, same amount) and debited, summed per account, to the account
-        // the source names; the manual remainder keeps the general expense account.
+        // open, same amount) and debited, summed per account, to the account(s)
+        // the source names (optional splits); the manual remainder keeps the
+        // general expense account.
         $reimbursementAmount = (string) ($deductions['reimbursement_amount'] ?? '0.00');
         $items = $this->currentReimbursementItems($slip);
         $byAccount = [];
         foreach ($items as $item) {
             $reimbursementAmount = Money::subtract($reimbursementAmount, $item['amount']);
-            $byAccount[$item['account_code']][] = $item;
+            foreach ($item['splits'] ?? [['account_code' => $item['account_code'], 'amount' => $item['amount']]] as $split) {
+                $byAccount[$split['account_code']][] = ['amount' => $split['amount'], 'label' => $item['label']];
+            }
         }
         foreach ($byAccount as $accountCode => $group) {
             $lines[] = new JournalLineData(
@@ -199,7 +202,7 @@ class PostPayrollAction
     }
 
     /**
-     * @return list<array{id: string, date: string, label: string, amount: string, account_code: string}>
+     * @return list<array{id: string, date: string, label: string, amount: string, account_code: string, splits?: list<array{account_code: string, amount: string}>}>
      */
     private function currentReimbursementItems(SalarySlip $slip): array
     {
