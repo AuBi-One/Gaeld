@@ -205,7 +205,8 @@ class OffersTest extends OffersTestCase
         $this->assertStringContainsString('href="https://example.test"', $html);
         $this->assertStringNotContainsString('<b>Atelier</b>', $html);
         $this->assertStringContainsString('1&#039;000.00', $html); // Swiss thousands separator, HTML-escaped
-        $this->assertStringContainsString('TVA 8.1 %', $html);
+        $this->assertStringContainsString('8.1 %', $html);
+        $this->assertStringContainsString('Total TVA incluse', $html);
     }
 
     #[Test]
@@ -332,6 +333,86 @@ class OffersTest extends OffersTestCase
         Invoice::query()->whereKeyNot($first->id)->sole()->delete();
         $this->assertFalse($offer->fresh()->hasInvoice());
         $this->actAsOrg()->post("/offers/{$offer->id}/reopen")->assertSessionHasNoErrors();
+    }
+
+    #[Test]
+    public function the_invoice_form_adds_lines_from_offers_and_the_offer_follows_their_edits(): void
+    {
+        $offer = app(Offers::class)->transition($this->sent(), 'accept');
+        $atelier = $offer->lines()->where('label', '1')->sole();
+        app(Offers::class)->transition($this->offer(['title' => 'Draft only']), 'send'); // sent, not accepted: not offered
+
+        // the picker lists the accepted offers of the client with what remains
+        $this->actAsOrg()->get("/offers/line-source?customer_id={$this->contact->id}")->assertOk()
+            ->assertJsonCount(1, 'groups')
+            ->assertJsonPath('groups.0.options.0.source_id', (string) $atelier->id)
+            ->assertJsonPath('groups.0.options.0.line.description', 'OF-2026-001 · 1 Atelier (jour)')
+            ->assertJsonPath('groups.0.options.0.line.quantity', '2.00')
+            ->assertJsonPath('groups.0.options.0.line.unit_price', '1200.00')
+            ->assertJsonPath('groups.0.options.0.line.vat_rate_id', (string) $this->vat->id);
+        $this->actAsOrg()->get('/offers/line-source?customer_id=999999')->assertOk()->assertJsonCount(0, 'groups');
+        $otherOrgContact = Contact::factory()->create(['organization_id' => Organization::factory()->create()->id]);
+        $this->actAsOrg()->get("/offers/line-source?customer_id={$otherOrgContact->id}")->assertOk()->assertJsonCount(0, 'groups');
+        $this->actAsOrg()->get('/invoices/create')->assertInertia(fn ($page) => $page->where('lineSources.0.type', 'offer_line'));
+
+        // a core invoice with a line taken from the offer, amount changed
+        $payload = fn (string $price, bool $withLine = true): array => [
+            'customer_id' => $this->contact->id, 'issue_date' => '2026-04-01', 'due_date' => '2026-04-30', 'currency' => 'CHF',
+            'lines' => array_values(array_filter([
+                $withLine ? ['description' => 'OF-2026-001 · 1 Atelier (jour) - 50%', 'quantity' => 1, 'unit_price' => $price, 'vat_rate_id' => $this->vat->id, 'source_type' => 'offer_line', 'source_id' => (string) $atelier->id] : null,
+                ['description' => 'Frais', 'quantity' => 1, 'unit_price' => 50],
+            ])),
+        ];
+        $create = $this->actAsOrg()->post('/invoices', $payload('1200'));
+        $invoice = Invoice::query()->findOrFail(basename((string) $create->headers->get('Location')));
+        $balance = fn (): array => app(Offers::class)->balance($offer->fresh('lines'))[$atelier->id];
+        $this->assertSame('1200.00', $balance()['invoiced']);
+        $this->actAsOrg()->get("/offers/{$offer->id}")->assertInertia(fn ($page) => $page->where('offer.invoices.0.number', $invoice->number)->where('offer.invoices.0.net_from_offer', '1200.00'));
+        $line = $invoice->lines()->where('source_type', 'offer_line')->sole();
+        $this->actAsOrg()->get("/invoices/{$invoice->id}")->assertInertia(fn ($page) => $page
+            ->where("lineSourceRefs.{$line->id}.label", __('offers::of.source_reference', ['number' => 'OF-2026-001', 'pos' => '1']))
+            ->where("lineSourceRefs.{$line->id}.url", "/offers/{$offer->id}"));
+
+        // edited in core: the offer follows
+        $this->actAsOrg()->put("/invoices/{$invoice->id}", ['number' => $invoice->number] + $payload('1500'))->assertSessionHasNoErrors();
+        $this->assertSame('1500.00', $balance()['invoiced']);
+        $this->assertSame('900.00', $balance()['remaining']);
+
+        // the line removed in core: nothing invoiced any more
+        $this->actAsOrg()->put("/invoices/{$invoice->id}", ['number' => $invoice->number] + $payload('0', withLine: false))->assertSessionHasNoErrors();
+        $this->assertSame('0.00', $balance()['invoiced']);
+        $this->assertFalse($offer->fresh()->hasInvoice());
+
+        // a line of another organisation's offer cannot be referenced
+        $foreign = Offer::query()->create([
+            'organization_id' => Organization::factory()->create()->id, 'number' => 'X-1', 'contact_id' => $this->contact->id,
+            'title' => 'Foreign', 'offer_date' => '2026-01-10', 'status' => Offer::STATUS_ACCEPTED,
+        ]);
+        $foreignLine = $foreign->lines()->create(['type' => 'item', 'description' => 'X', 'quantity' => 1, 'unit_price' => 1, 'amount' => 1]);
+        $bad = $payload('10');
+        $bad['lines'][0]['source_id'] = (string) $foreignLine->id;
+        $this->actAsOrg()->post('/invoices', $bad)->assertSessionHasErrors('lines.0.source_id');
+
+        // an invoice to another client does not count for the offer
+        $other = Contact::factory()->create(['organization_id' => $this->org->id]);
+        $elsewhere = $payload('500');
+        $elsewhere['customer_id'] = $other->id;
+        $this->actAsOrg()->post('/invoices', $elsewhere)->assertSessionHasNoErrors();
+        $this->assertSame('0.00', $balance()['invoiced']);
+
+        // once the VAT rate of the offer changed, the picker no longer offers it
+        $this->vat->update(['rate' => 7.70]);
+        $this->actAsOrg()->get("/offers/line-source?customer_id={$this->contact->id}")->assertJsonCount(0, 'groups');
+    }
+
+    #[Test]
+    public function the_offer_side_invoice_writes_the_same_source_on_invoice_lines(): void
+    {
+        $offer = app(Offers::class)->transition($this->sent(), 'accept');
+        $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => $this->whole($offer)])->assertSessionHasNoErrors();
+        $sources = Invoice::query()->sole()->lines()->orderBy('sort_order')->get(['source_type', 'source_id'])->toArray();
+        $ids = $offer->lines()->where('type', 'item')->orderBy('sort')->pluck('id')->map(fn ($id): string => (string) $id)->all();
+        $this->assertSame([['source_type' => 'offer_line', 'source_id' => $ids[0]], ['source_type' => 'offer_line', 'source_id' => $ids[1]]], $sources);
     }
 
     #[Test]

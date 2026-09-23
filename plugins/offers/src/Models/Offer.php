@@ -4,7 +4,6 @@ namespace Plugins\Offers\Models;
 
 use App\Domains\Contacts\Models\Contact;
 use App\Domains\Contacts\Models\ContactPerson;
-use App\Domains\Invoicing\Enums\InvoiceStatus;
 use App\Support\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -13,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
+use Plugins\Offers\Support\OfferInvoicing;
 
 /**
  * Offer (quote) to a client. Only drafts are edited; the document sent to the
@@ -54,7 +54,6 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, OfferLine> $lines
  * @property-read Offer|null $supersedes
  * @property-read Offer|null $supersededBy
- * @property-read Collection<int, OfferInvoice> $invoiceLinks
  */
 class Offer extends Model
 {
@@ -123,12 +122,6 @@ class Offer extends Model
         return $this->hasOne(self::class, 'supersedes_id');
     }
 
-    /** @return HasMany<OfferInvoice, $this> */
-    public function invoiceLinks(): HasMany
-    {
-        return $this->hasMany(OfferInvoice::class);
-    }
-
     public function isDraft(): bool
     {
         return $this->status === self::STATUS_DRAFT;
@@ -142,27 +135,15 @@ class Offer extends Model
             && $this->valid_until->lt(now()->startOfDay());
     }
 
-    /** At least one invoice made from this offer still counts (exists, not cancelled). */
+    /** At least one invoice line taken from this offer still counts (see OfferInvoicing). */
     public function hasInvoice(): bool
     {
-        return $this->invoiceLinks()->whereHas('invoice', fn ($q) => $q->where('status', '!=', InvoiceStatus::Cancelled->value))->exists();
+        return OfferInvoicing::hasInvoice($this);
     }
 
-    /**
-     * Net amount invoiced per offer line, over the invoices that still count.
-     *
-     * @return array<int, string> offer line id => amount
-     */
+    /** @return array<int, string> offer line id => net amount invoiced */
     public function invoicedByLine(): array
     {
-        return OfferInvoiceLine::query()
-            ->whereHas('link', fn ($q) => $q->where('offer_id', $this->id)
-                ->whereHas('invoice', fn ($q) => $q->where('status', '!=', InvoiceStatus::Cancelled->value)))
-            ->whereNotNull('offer_line_id')
-            ->groupBy('offer_line_id')
-            ->selectRaw('offer_line_id, SUM(amount) AS invoiced')
-            ->pluck('invoiced', 'offer_line_id')
-            ->map(fn ($v): string => number_format((float) $v, 2, '.', ''))
-            ->all();
+        return OfferInvoicing::invoicedByLine($this);
     }
 }

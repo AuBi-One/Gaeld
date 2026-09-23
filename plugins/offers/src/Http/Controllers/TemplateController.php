@@ -2,6 +2,7 @@
 
 namespace Plugins\Offers\Http\Controllers;
 
+use App\Domains\Organizations\Models\Organization;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -51,7 +52,15 @@ class TemplateController extends PluginController
     {
         $this->authorizeWrite();
 
-        return $this->page('Offers/TemplateForm', ['template' => null, 'defaultLayout' => Layout::DEFAULT]);
+        $organization = Organization::query()->findOrFail($this->orgId());
+        $language = in_array($organization->locale, ['fr', 'de', 'it', 'en'], true) ? $organization->locale : 'fr';
+
+        return $this->page('Offers/TemplateForm', [
+            'template' => null,
+            'defaultLayout' => Layout::DEFAULT,
+            // Fixed texts of the Word offer model, as a starting point (editable).
+            'defaultClosing' => (string) trans('offers::of.default_closing', [], $language),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse

@@ -5,10 +5,10 @@ namespace Plugins\Offers\Http\Controllers;
 use App\Domains\Accounting\Models\VatRate;
 use App\Domains\Contacts\Models\Contact;
 use App\Domains\Contacts\Models\ContactPerson;
-use App\Domains\Invoicing\Enums\InvoiceStatus;
 use App\Domains\Organizations\Models\Organization;
 use App\Support\Money;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -17,13 +17,13 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Response;
 use Plugins\Offers\Models\Offer;
-use Plugins\Offers\Models\OfferInvoice;
-use Plugins\Offers\Models\OfferInvoiceLine;
 use Plugins\Offers\Models\OfferLine;
 use Plugins\Offers\Models\OfferSetting;
 use Plugins\Offers\Models\OfferTemplate;
+use Plugins\Offers\Services\OfferLineSource;
 use Plugins\Offers\Services\OfferPdf;
 use Plugins\Offers\Services\Offers;
+use Plugins\Offers\Support\OfferInvoicing;
 use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 class OfferController extends PluginController
@@ -111,7 +111,7 @@ class OfferController extends PluginController
     public function show(Offer $offer): Response
     {
         $this->authorizeView();
-        $offer->load(['lines', 'contact', 'contactPerson', 'supersedes:id,number', 'supersededBy:id,number,supersedes_id', 'invoiceLinks.invoice', 'invoiceLinks.lines']);
+        $offer->load(['lines', 'contact', 'contactPerson', 'supersedes:id,number', 'supersededBy:id,number,supersedes_id']);
         $balance = $this->offers->balance($offer);
 
         return $this->page('Offers/Show', [
@@ -119,16 +119,14 @@ class OfferController extends PluginController
                 'balance' => $balance,
                 'invoiced' => self::sum(array_column($balance, 'invoiced')),
                 'remaining' => self::sum(array_column($balance, 'remaining')),
-                'invoices' => $offer->invoiceLinks
-                    ->filter(fn (OfferInvoice $link): bool => $link->invoice !== null)
-                    ->map(fn (OfferInvoice $link): array => [
-                        'id' => $link->invoice->id,
-                        'number' => $link->invoice->number,
-                        'status' => $link->invoice->status->value,
-                        'issue_date' => $link->invoice->issue_date->toDateString(),
-                        'total' => (string) $link->invoice->total,
-                        'net_from_offer' => self::sum($link->lines->map(fn ($l): string => (string) $l->amount)->all()),
-                    ])->values(),
+                'invoices' => OfferInvoicing::invoices($offer)->map(fn (object $i): array => [
+                    'id' => $i->id,
+                    'number' => $i->number,
+                    'status' => $i->status,
+                    'issue_date' => substr((string) $i->issue_date, 0, 10),
+                    'total' => number_format((float) $i->total, 2, '.', ''),
+                    'net_from_offer' => number_format((float) $i->net_from_offer, 2, '.', ''),
+                ])->values(),
                 'can_invoice' => $offer->status === Offer::STATUS_ACCEPTED && collect($balance)->contains(fn (array $b): bool => ! Money::isZero($b['remaining'])),
                 'contact_uuid' => $offer->contact?->uuid,
                 'supersedes' => $offer->supersedes?->only(['id', 'number']),
@@ -182,6 +180,59 @@ class OfferController extends PluginController
         $copy = $this->offers->revise($offer, $request->user()?->id);
 
         return redirect("/offers/{$copy->id}/edit")->with('success', __('offers::of.revision_created', ['number' => $copy->number]));
+    }
+
+    /**
+     * "Add line from offer" on the core invoice form: the positions left to invoice
+     * of the client's accepted offers (JSON for InvoiceLineSourcePicker.vue).
+     */
+    public function lineSource(Request $request): JsonResponse
+    {
+        $this->authorizeWrite();
+        $customerId = $request->string('customer_id')->toString();
+        $offers = ctype_digit($customerId)
+            ? Offer::query()->with('lines')->where('status', Offer::STATUS_ACCEPTED)->where('contact_id', (int) $customerId)
+                ->orderByDesc('offer_date')->orderByDesc('number')->limit(50)->get()
+            : collect();
+
+        $groups = [];
+        foreach ($offers as $offer) {
+            $balance = $this->offers->balance($offer);
+            $vatRateId = $this->offers->invoiceVatRateId($offer);
+            if ($offer->vat_rate !== null && $vatRateId === null) {
+                continue; // VAT rate changed since the offer: invoiced from the offer page only (refused there)
+            }
+            $options = [];
+            // Positions with something left (same sign as offered: an over-invoiced one is not offered again).
+            $open = fn (OfferLine $l): bool => $l->isItem() && ! Money::isZero($balance[$l->id]['remaining'])
+                && Money::isNegative($balance[$l->id]['remaining']) === Money::isNegative((string) $l->amount);
+            foreach ($offer->lines->filter($open) as $line) {
+                $b = $balance[$line->id];
+                $options[] = [
+                    'source_id' => (string) $line->id,
+                    'label' => __('offers::of.source_option', [
+                        'text' => $this->offers->invoiceDescription($line),
+                        'amount' => OfferPdf::money($b['amount']),
+                        'remaining' => OfferPdf::money($b['remaining']),
+                    ]),
+                    'reference' => OfferLineSource::reference($offer->number, $line),
+                    'line' => [
+                        'type' => 'item',
+                        'description' => $offer->number.' · '.$this->offers->invoiceDescription($line),
+                        'vat_rate_id' => $vatRateId,
+                    ] + Offers::prefill($line, $b),
+                ];
+            }
+            if ($options !== []) {
+                $groups[] = ['label' => "{$offer->number} — {$offer->title}", 'options' => $options];
+            }
+        }
+
+        return response()->json([
+            'title' => __('offers::of.add_line_from_offer'),
+            'empty' => __('offers::of.source_empty'),
+            'groups' => $groups,
+        ]);
     }
 
     /** Choose the offer lines (and amounts, texts) for a new invoice. */
@@ -296,6 +347,8 @@ class OfferController extends PluginController
                 'language' => in_array($organization->locale, ['fr', 'de', 'it', 'en'], true) ? $organization->locale : 'fr',
                 'currency' => $organization->currency ?: 'CHF',
                 'validity_months' => OfferSetting::for($this->orgId())->validity_months,
+                // Fixed texts of the Word offer model, as a starting point (editable).
+                'closing' => (string) trans('offers::of.default_closing', [], in_array($organization->locale, ['fr', 'de', 'it', 'en'], true) ? $organization->locale : 'fr'),
             ],
         ];
     }
@@ -348,15 +401,10 @@ class OfferController extends PluginController
      */
     private function invoicing(Builder $offers): Collection
     {
-        $perLine = OfferInvoiceLine::query()
-            ->join('of_offer_invoices as oi', 'oi.id', '=', 'of_offer_invoice_lines.offer_invoice_id')
-            ->join('invoices', 'invoices.id', '=', 'oi.invoice_id')
-            ->whereNull('invoices.deleted_at')
-            ->where('invoices.status', '!=', InvoiceStatus::Cancelled->value)
-            ->whereNotNull('of_offer_invoice_lines.offer_line_id')
-            ->whereIn('oi.offer_id', (clone $offers)->select('of_offers.id'))
-            ->groupBy('of_offer_invoice_lines.offer_line_id')
-            ->selectRaw('of_offer_invoice_lines.offer_line_id, SUM(of_offer_invoice_lines.amount) AS invoiced');
+        $perLine = OfferInvoicing::lines()
+            ->whereIn('l.offer_id', (clone $offers)->select('of_offers.id'))
+            ->groupBy('l.id')
+            ->selectRaw('l.id AS offer_line_id, SUM(il.amount) AS invoiced');
 
         /** @var Collection<string, object{offer_id: string, invoiced: string, remaining: string, open_lines: int}> */
         return DB::table('of_offer_lines as l')

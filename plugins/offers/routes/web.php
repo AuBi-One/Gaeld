@@ -9,6 +9,7 @@ Route::middleware(['web', 'auth', 'verified', 'org', 'org-2fa', 'subscription'])
         Route::get('/', [OfferController::class, 'index'])->name('index');
         Route::get('/create', [OfferController::class, 'create'])->name('create');
         Route::post('/', [OfferController::class, 'store'])->name('store');
+        Route::get('/line-source', [OfferController::class, 'lineSource'])->middleware('throttle:60,1')->name('line-source');
         Route::get('/{offer}', [OfferController::class, 'show'])->whereUuid('offer')->name('show');
         Route::get('/{offer}/edit', [OfferController::class, 'edit'])->whereUuid('offer')->name('edit');
         Route::put('/{offer}', [OfferController::class, 'update'])->whereUuid('offer')->name('update');

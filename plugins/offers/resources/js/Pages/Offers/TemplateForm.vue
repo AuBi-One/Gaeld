@@ -17,6 +17,7 @@ const { t } = useTranslations()
 const props = defineProps({
   template: { type: Object, default: null },
   defaultLayout: { type: Object, required: true },
+  defaultClosing: { type: String, default: '' },
 })
 
 const clone = value => JSON.parse(JSON.stringify(value))
@@ -26,7 +27,7 @@ const form = useForm({
   name: props.template?.name ?? '',
   title: props.template?.title ?? '',
   intro: props.template?.intro ?? '',
-  closing: props.template?.closing ?? '',
+  closing: props.template ? (props.template.closing ?? '') : props.defaultClosing,
   layout: clone(props.template?.layout ?? props.defaultLayout),
   is_default: props.template?.is_default ?? false,
   lines: (props.template?.lines ?? []).map(l => ({ type: l.type, label: l.label ?? '', description: l.description ?? '', quantity: l.quantity ?? '', unit: l.unit ?? '', unit_price: l.unit_price ?? '' })),

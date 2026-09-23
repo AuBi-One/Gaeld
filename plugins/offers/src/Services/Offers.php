@@ -20,6 +20,7 @@ use Plugins\Offers\Models\OfferLine;
 use Plugins\Offers\Models\OfferSetting;
 use Plugins\Offers\Models\OfferTemplate;
 use Plugins\Offers\Support\Layout;
+use Plugins\Offers\Support\OfferInvoicing;
 
 /**
  * Offer lifecycle: drafts with lines and totals, status changes, revisions and
@@ -352,21 +353,18 @@ class Offers
                 throw ValidationException::withMessages(['lines' => __('offers::of.invoice_no_lines')]);
             }
             // The invoice takes the rate's current percentage: it must still be the one offered.
-            $vatRateId = null;
-            if ($offer->vat_rate !== null) {
-                $rate = $offer->vat_rate_id !== null ? VatRate::query()->find($offer->vat_rate_id) : null;
-                if ($rate === null || Money::compare((string) $rate->rate, (string) $offer->vat_rate) !== 0) {
-                    throw ValidationException::withMessages(['status' => __('offers::of.vat_rate_changed', ['rate' => (string) $offer->vat_rate])]);
-                }
-                $vatRateId = (string) $rate->id;
+            $vatRateId = $this->invoiceVatRateId($offer);
+            if ($offer->vat_rate !== null && $vatRateId === null) {
+                throw ValidationException::withMessages(['status' => __('offers::of.vat_rate_changed', ['rate' => (string) $offer->vat_rate])]);
             }
 
             $balance = $this->balance($offer);
             $lines = [];
-            $links = [];
+            $seen = [];
+            $net = '0.00';
             foreach (array_values($selection) as $i => $chosen) {
                 $line = $offer->lines->firstWhere('id', (int) $chosen['line_id']);
-                if ($line === null || ! $line->isItem() || isset($links[$line->id])) {
+                if ($line === null || ! $line->isItem() || isset($seen[$line->id])) {
                     throw ValidationException::withMessages(["lines.{$i}.line_id" => __('offers::of.invoice_line_invalid')]);
                 }
                 $amount = Money::round((string) $chosen['amount']);
@@ -383,12 +381,14 @@ class Offers
                     'unit_price' => $whole ? (string) $line->unit_price : $amount,
                     'vat_rate_id' => $vatRateId,
                     'sort_order' => $i,
+                    'source_type' => OfferInvoicing::SOURCE,
+                    'source_id' => (string) $line->id,
                 ];
-                $links[$line->id] = ['offer_line_id' => $line->id, 'amount' => $amount];
+                $seen[$line->id] = true;
+                $net = Money::add($net, $amount);
             }
 
             // A rebate alone (or one outweighing the rest) would be a credit note, not an invoice.
-            $net = array_reduce($links, fn (string $sum, array $l): string => Money::add($sum, $l['amount']), '0.00');
             if (! Money::isPositive($net)) {
                 throw ValidationException::withMessages(['lines' => __('offers::of.invoice_total_not_positive')]);
             }
@@ -406,10 +406,33 @@ class Offers
                 'lines' => $lines,
             ]));
 
-            $offer->invoiceLinks()->create(['invoice_id' => $invoice->id])->lines()->createMany(array_values($links));
-
             return $invoice;
         });
+    }
+
+    /** The VAT rate to put on invoice lines: the offer's, if its percentage is unchanged. */
+    public function invoiceVatRateId(Offer $offer): ?string
+    {
+        if ($offer->vat_rate === null || $offer->vat_rate_id === null) {
+            return null;
+        }
+        $rate = VatRate::query()->find($offer->vat_rate_id);
+
+        return $rate !== null && Money::compare((string) $rate->rate, (string) $offer->vat_rate) === 0 ? (string) $rate->id : null;
+    }
+
+    /**
+     * Prefill of an invoice line for what remains of an offer line: the line as
+     * offered when nothing was invoiced yet, otherwise 1 × what remains.
+     *
+     * @param  array{amount: string, invoiced: string, remaining: string}  $balance
+     * @return array{quantity: string, unit_price: string}
+     */
+    public static function prefill(OfferLine $line, array $balance): array
+    {
+        return Money::isZero($balance['invoiced'])
+            ? ['quantity' => (string) $line->quantity, 'unit_price' => (string) $line->unit_price]
+            : ['quantity' => '1', 'unit_price' => $balance['remaining']];
     }
 
     /** Default invoice text of an offer line: position, description, unit. */

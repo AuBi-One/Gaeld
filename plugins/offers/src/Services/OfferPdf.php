@@ -4,6 +4,7 @@ namespace Plugins\Offers\Services;
 
 use App\Domains\Organizations\Models\Organization;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Plugins\Offers\Models\Offer;
@@ -11,17 +12,37 @@ use Plugins\Offers\Models\OfferSetting;
 use Plugins\Offers\Support\Layout;
 
 /**
- * The offer document: a Blade view (Swiss window-envelope layout) rendered by dompdf.
+ * The offer document: a Blade view rendered by dompdf, laid out after the Word offer model.
  */
 class OfferPdf
 {
     public function render(Offer $offer): string
     {
-        // Subsetting keeps the embedded font small; only data: URIs (the logo) may be loaded,
-        // so no text of the offer can make dompdf read a local file or a URL.
+        // Subsetting keeps the embedded font small. Only data: URIs (the logo) and the
+        // plugin's font files may be loaded: file:// is confined (chroot) to the fonts
+        // folder, so no text of the offer can make dompdf read another file or a URL.
+        // dompdf keeps the metrics of the installed @font-face fonts there (created on first use).
+        File::ensureDirectoryExists(storage_path('fonts'));
+
         return Pdf::loadHTML($this->html($offer))->setPaper('A4', 'portrait')
-            ->setOption(['isFontSubsettingEnabled' => true, 'isRemoteEnabled' => false, 'allowedProtocols' => ['data://' => []]])
+            ->setOption([
+                'isFontSubsettingEnabled' => true,
+                'isRemoteEnabled' => false,
+                'allowedProtocols' => ['data://' => [], 'file://' => []],
+                'chroot' => [self::fontsPath()],
+            ])
             ->output();
+    }
+
+    /** Carlito (SIL OFL 1.1), metric-compatible with Calibri, the font of the Word model. */
+    public static function fontsPath(): string
+    {
+        $path = realpath(__DIR__.'/../../resources/fonts');
+        if ($path === false) {
+            throw new \RuntimeException('Offer fonts folder missing: plugins/offers/resources/fonts');
+        }
+
+        return $path;
     }
 
     public function html(Offer $offer): string
@@ -51,6 +72,7 @@ class OfferPdf
             'closing' => $this->markdown($offer->closing, $placeholders),
             't' => fn (string $key, array $replace = []): string => (string) trans('offers::of.'.$key, $replace, $lang),
             'money' => fn (string $value): string => self::money($value),
+            'fonts' => 'file://'.self::fontsPath(),
         ])->render();
     }
 
@@ -82,7 +104,8 @@ class OfferPdf
         foreach (array_keys($placeholders) as $i => $key) {
             $tokens[$key] = "\u{E000}{$i}\u{E001}";
         }
-        $html = Str::markdown(strtr($text, $tokens), ['html_input' => 'escape', 'allow_unsafe_links' => false]);
+        // A line break in the text is a line break in the document (as in Word).
+        $html = Str::markdown(strtr($text, $tokens), ['html_input' => 'escape', 'allow_unsafe_links' => false, 'renderer' => ['soft_break' => "<br>\n"]]);
         $html = strtr($html, array_combine(array_values($tokens), array_values($placeholders)));
 
         return (string) preg_replace('/<img\b[^>]*>/i', '', $html);

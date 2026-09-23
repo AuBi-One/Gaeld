@@ -2,8 +2,10 @@
 
 namespace Plugins\Offers;
 
+use App\Domains\Invoicing\Services\InvoiceLineSources;
 use App\Support\Plugins\PluginNavigation;
 use Illuminate\Support\ServiceProvider;
+use Plugins\Offers\Services\OfferLineSource;
 
 class OffersServiceProvider extends ServiceProvider
 {
@@ -23,5 +25,8 @@ class OffersServiceProvider extends ServiceProvider
         // Top-level entry in the Activity section, right after Invoices (hidden where invoices
         // are, e.g. fiduciary organisations); templates are reached from the offers page.
         $navigation->add('after:invoices', 'offers', 'offers::of.nav_offers', '/offers', 'invoicing.view', 'FilePen');
+
+        // "Add line from offer" on the invoice form, and the link back from invoice lines.
+        $this->app->make(InvoiceLineSources::class)->register(new OfferLineSource);
     }
 }

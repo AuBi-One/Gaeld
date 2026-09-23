@@ -47,7 +47,7 @@ const form = useForm({
   contact_person_id: props.offer?.contact_person_id ?? '',
   title: props.offer?.title ?? '',
   intro: props.offer?.intro ?? '',
-  closing: props.offer?.closing ?? '',
+  closing: props.offer ? (props.offer.closing ?? '') : (props.defaults.closing ?? ''),
   notes: props.offer?.notes ?? '',
   offer_date: props.offer?.offer_date ?? today,
   valid_until: props.offer ? (props.offer.valid_until ?? '') : addMonths(today, props.defaults.validity_months ?? 2),
