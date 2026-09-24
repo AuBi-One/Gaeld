@@ -22,6 +22,8 @@ const props = defineProps({
   contact: { type: Object, required: true },
   invoices: { type: Array, default: () => [] },
   expenses: { type: Array, default: () => [] },
+  // Sections added by other features: [{key, title, columns, rows, empty_text, action}]
+  panels: { type: Array, default: () => [] },
 })
 
 const invoiceStatusVariant = {
@@ -37,6 +39,15 @@ const expenseStatusVariant = {
   approved: 'default',
   paid: 'success',
   rejected: 'destructive',
+}
+
+// Cells of panels: money and dates in the user's locale, like the invoices above.
+function panelCell(column, row) {
+  const value = row.cells[column.key]
+  if (value === null || value === undefined || value === '') return '—'
+  if (column.type === 'money') return formatCurrency(value, row.currency ?? undefined)
+  if (column.type === 'date') return formatDate(value)
+  return value
 }
 
 const cp = useContactPersons('contacts', props.contact.uuid, props.contact.contact_persons ?? [])
@@ -169,6 +180,34 @@ const cp = useContactPersons('contacts', props.contact.uuid, props.contact.conta
                     <Badge :variant="expenseStatusVariant[expense.status] ?? 'secondary'">
                       {{ t('expense_status_' + expense.status) }}
                     </Badge>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+
+        <!-- Sections added by other features (ContactPanels) -->
+        <Card v-for="panel in panels" :key="panel.key" :data-panel="panel.key">
+          <CardHeader>
+            <div class="flex items-center justify-between gap-2">
+              <CardTitle>{{ panel.title }}</CardTitle>
+              <a v-if="panel.action" :href="panel.action.href" class="text-sm text-[hsl(var(--primary))] underline">{{ panel.action.label }}</a>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <EmptyState v-if="!panel.rows.length" :title="panel.empty_text ?? ''" />
+            <table v-else class="w-full text-sm">
+              <thead>
+                <tr class="border-b text-[hsl(var(--muted-foreground))]">
+                  <th v-for="column in panel.columns" :key="column.key" :class="['pb-2 font-medium', column.align === 'right' ? 'text-right' : 'text-left']">{{ column.label }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, r) in panel.rows" :key="r" class="border-b last:border-0">
+                  <td v-for="(column, c) in panel.columns" :key="column.key" :class="['py-2', column.align === 'right' ? 'text-right' : '']">
+                    <a v-if="c === 0 && row.href" :href="row.href" class="font-medium underline">{{ panelCell(column, row) }}</a>
+                    <template v-else>{{ panelCell(column, row) }}</template>
                   </td>
                 </tr>
               </tbody>

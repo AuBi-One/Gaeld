@@ -7,6 +7,7 @@ use App\Domains\Contacts\DTOs\UpdateContactData;
 use App\Domains\Contacts\Models\Contact;
 use App\Domains\Contacts\Queries\ContactQuery;
 use App\Domains\Contacts\Requests\StoreContactRequest;
+use App\Domains\Contacts\Services\ContactPanels;
 use App\Http\Controllers\Concerns\HandlesCrudOperations;
 use App\Http\Controllers\Concerns\HandlesFlashErrorResponses;
 use App\Http\Controllers\Controller;
@@ -33,6 +34,8 @@ class ContactController extends Controller
             $this->resourceName() => $model,
             'invoices' => $model->invoices,
             'expenses' => $model->expenses,
+            // Sections added by other features (see ContactPanels); skipped by partial reloads
+            'panels' => fn (): array => app(ContactPanels::class)->for($model),
         ]);
     }
 
