@@ -6,7 +6,8 @@ import { useTranslations } from '@/lib/useTranslations'
 
 // Picks a record an invoice line is taken from (a source registered by a plugin, see
 // App\Domains\Invoicing\Services\InvoiceLineSources). The source's endpoint returns
-// {title, empty, groups: [{label, options: [{source_id, label, reference, line}]}]}.
+// {title, empty, hide_complete_label?, groups: [{label, options: [{source_id, label, reference, line, complete?}]}]}.
+// With hide_complete_label, a checkbox hides the options marked complete (remembered per browser and source).
 const props = defineProps({
   open: { type: Boolean, default: false },
   source: { type: Object, default: null },
@@ -45,7 +46,11 @@ watch(() => [props.open, props.source?.type, props.customerId], async ([open]) =
 }, { immediate: true })
 
 const groups = computed(() => data.value?.groups ?? [])
-const options = computed(() => groups.value[groupIndex.value]?.options ?? [])
+const hideKey = computed(() => `invoice-line-source:${props.source?.type ?? ''}:hide-complete`)
+const hideComplete = ref(false)
+watch(hideKey, key => { try { hideComplete.value = localStorage.getItem(key) === '1' } catch { hideComplete.value = false } }, { immediate: true })
+watch(hideComplete, value => { try { localStorage.setItem(hideKey.value, value ? '1' : '0') } catch { /* private mode */ } })
+const options = computed(() => (groups.value[groupIndex.value]?.options ?? []).filter(o => !(hideComplete.value && data.value?.hide_complete_label && o.complete)))
 watch(options, list => { optionId.value = list.length === 1 ? String(list[0].source_id) : '' })
 
 function pick() {
@@ -70,6 +75,11 @@ function pick() {
         >
           <option v-for="(group, i) in groups" :key="i" :value="i">{{ group.label }}</option>
         </select>
+        <label v-if="data?.hide_complete_label" class="flex items-center gap-2 text-sm">
+          <input id="line-source-hide-complete" v-model="hideComplete" type="checkbox" class="h-4 w-4" />
+          {{ data.hide_complete_label }}
+        </label>
+        <p v-if="!options.length" class="text-sm text-[hsl(var(--muted-foreground))]">{{ data?.empty }}</p>
         <div class="max-h-80 space-y-1 overflow-y-auto">
           <label
             v-for="option in options"

@@ -20,8 +20,10 @@ interface InvoiceLineSourceInterface
 
     /**
      * URL of a JSON endpoint called with `?customer_id=` that returns
-     * `{title, empty, groups: [{label, options: [{source_id, label, reference,
-     * line: {type, description, quantity, unit_price, vat_rate_id}}]}]}`.
+     * `{title, empty, hide_complete_label?, groups: [{label, options: [{source_id, label, reference,
+     * complete?: bool, line: {type, description, quantity, unit_price, vat_rate_id}}]}]}`.
+     * With `hide_complete_label`, the picker offers a checkbox (remembered per browser)
+     * that hides the options marked `complete` (e.g. positions already invoiced in full).
      */
     public function pickerUrl(): string;
 
