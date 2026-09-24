@@ -120,10 +120,14 @@ const total = computed(() => subtotal.value + vatTotal.value)
       </div>
 
       <!-- Notes & payment terms -->
-      <div v-if="form.notes || form.payment_terms" class="space-y-2 border-t border-[hsl(var(--border))] pt-3">
+      <div v-if="form.notes || form.introduction || form.payment_terms" class="space-y-2 border-t border-[hsl(var(--border))] pt-3">
+        <div v-if="form.introduction">
+          <span class="text-[hsl(var(--muted-foreground))]">{{ t('introduction') }}:</span>
+          <p class="whitespace-pre-line">{{ form.introduction }}</p>
+        </div>
         <div v-if="form.payment_terms">
-          <span class="text-[hsl(var(--muted-foreground))]">{{ t('payment_terms_days') }}:</span>
-          {{ form.payment_terms }} {{ t('days') }}
+          <span class="text-[hsl(var(--muted-foreground))]">{{ t('payment_terms') }}:</span>
+          {{ /^\d+$/.test(String(form.payment_terms).trim()) ? t('days_count', { count: Number(String(form.payment_terms).trim()) }) : form.payment_terms }}
         </div>
         <div v-if="form.notes">
           <span class="text-[hsl(var(--muted-foreground))]">{{ t('notes') }}:</span>

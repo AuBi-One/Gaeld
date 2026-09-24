@@ -53,7 +53,7 @@ class InvoiceApiController extends Controller
      * @queryParam filter[type] string Filter by type (e.g. `invoice`, `credit_note`). Example: invoice
      * @queryParam search string Search by invoice number or customer name. Example: INV-2025
      *
-     * @response 200 scenario="Success" {"data":[{"id":"9c8f...","number":"INV-2025-001","status":"sent","type":"invoice","related_invoice_id":null,"customer":{"id":"9c8f...","type":"company","name":"ACME GmbH"},"issue_date":"2025-01-15","due_date":"2025-02-14","subtotal":"1000.00","vat_amount":"81.00","total":"1081.00","currency":"CHF","notes":null,"payment_terms":"30 days net","amount_paid":"0.00","amount_due":"1081.00","lines":[],"payments":[],"created_at":"2025-01-15T10:00:00.000000Z","updated_at":"2025-01-15T10:00:00.000000Z"}],"links":{"first":"...","last":"...","prev":null,"next":"..."},"meta":{"current_page":1,"from":1,"last_page":1,"per_page":20,"to":1,"total":1}}
+     * @response 200 scenario="Success" {"data":[{"id":"9c8f...","number":"INV-2025-001","status":"sent","type":"invoice","related_invoice_id":null,"customer":{"id":"9c8f...","type":"company","name":"ACME GmbH"},"issue_date":"2025-01-15","due_date":"2025-02-14","subtotal":"1000.00","vat_amount":"81.00","total":"1081.00","currency":"CHF","notes":null,"introduction":null,"payment_terms":"30 days net","amount_paid":"0.00","amount_due":"1081.00","lines":[],"payments":[],"created_at":"2025-01-15T10:00:00.000000Z","updated_at":"2025-01-15T10:00:00.000000Z"}],"links":{"first":"...","last":"...","prev":null,"next":"..."},"meta":{"current_page":1,"from":1,"last_page":1,"per_page":20,"to":1,"total":1}}
      */
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -71,7 +71,7 @@ class InvoiceApiController extends Controller
      *
      * @urlParam invoice string required The UUID of the invoice. Example: 9c8f1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b
      *
-     * @response 200 scenario="Success" {"data":{"id":"9c8f...","number":"INV-2025-001","status":"sent","type":"invoice","related_invoice_id":null,"customer":{"id":"9c8f...","type":"company","name":"ACME GmbH","email":"info@acme.ch"},"issue_date":"2025-01-15","due_date":"2025-02-14","subtotal":"1000.00","vat_amount":"81.00","total":"1081.00","currency":"CHF","notes":null,"payment_terms":"30 days net","amount_paid":"0.00","amount_due":"1081.00","lines":[{"id":"uuid","description":"Consulting","quantity":"10.00","unit_price":"100.00","amount":"1000.00","vat_rate_id":"uuid","vat_amount":"81.00","sort_order":1}],"payments":[],"created_at":"2025-01-15T10:00:00.000000Z","updated_at":"2025-01-15T10:00:00.000000Z"}}
+     * @response 200 scenario="Success" {"data":{"id":"9c8f...","number":"INV-2025-001","status":"sent","type":"invoice","related_invoice_id":null,"customer":{"id":"9c8f...","type":"company","name":"ACME GmbH","email":"info@acme.ch"},"issue_date":"2025-01-15","due_date":"2025-02-14","subtotal":"1000.00","vat_amount":"81.00","total":"1081.00","currency":"CHF","notes":null,"introduction":null,"payment_terms":"30 days net","amount_paid":"0.00","amount_due":"1081.00","lines":[{"id":"uuid","description":"Consulting","quantity":"10.00","unit_price":"100.00","amount":"1000.00","vat_rate_id":"uuid","vat_amount":"81.00","sort_order":1}],"payments":[],"created_at":"2025-01-15T10:00:00.000000Z","updated_at":"2025-01-15T10:00:00.000000Z"}}
      * @response 404 scenario="Not found" {"message":"No query results for model [Invoice]."}
      */
     public function show(Invoice $invoice): InvoiceResource
@@ -94,6 +94,7 @@ class InvoiceApiController extends Controller
      * @bodyParam due_date string Date in YYYY-MM-DD format, must be ≥ issue_date. Example: 2025-02-14
      * @bodyParam currency string ISO 4217 currency code. Example: CHF
      * @bodyParam notes string Notes displayed on the invoice.
+     * @bodyParam introduction string Text printed before the line items. Example: Consulting mandate, June 2026
      * @bodyParam payment_terms string Payment terms text. Example: 30 days net
      * @bodyParam lines object[] required At least one line item.
      * @bodyParam lines[].description string required Line description. Example: Consulting services
@@ -188,6 +189,7 @@ class InvoiceApiController extends Controller
      * @bodyParam due_date string Date in YYYY-MM-DD format.
      * @bodyParam currency string ISO 4217 currency code.
      * @bodyParam notes string Notes displayed on the invoice.
+     * @bodyParam introduction string Text printed before the line items.
      * @bodyParam payment_terms string Payment terms text.
      * @bodyParam lines object[] Line items (replaces all existing lines).
      * @bodyParam lines[].description string required Line description.
@@ -440,6 +442,9 @@ class InvoiceApiController extends Controller
             'notes' => array_key_exists('notes', $validated)
                 ? $validated['notes']
                 : $invoice->notes,
+            'introduction' => array_key_exists('introduction', $validated)
+                ? $validated['introduction']
+                : $invoice->introduction,
             'payment_terms' => array_key_exists('payment_terms', $validated)
                 ? $validated['payment_terms']
                 : $invoice->payment_terms,

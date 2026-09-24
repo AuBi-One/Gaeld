@@ -67,7 +67,7 @@ class GenerateQrInvoicePdfAction
         $this->pdfRenderer->renderInvoiceHeader($tcpdf, $invoice, $organization);
         $this->pdfRenderer->renderLineItems($tcpdf, $invoice);
         $this->pdfRenderer->renderTotals($tcpdf, $invoice, $organization);
-        $this->pdfRenderer->renderFooter($tcpdf);
+        $this->pdfRenderer->renderFooter($tcpdf, $organization);
 
         // --- QR PAYMENT SLIP (dedicated last page) ---
         $this->addPaymentPage($tcpdf, $invoice, $organization, $language);

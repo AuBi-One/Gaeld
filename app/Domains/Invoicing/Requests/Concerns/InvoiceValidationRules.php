@@ -49,12 +49,23 @@ trait InvoiceValidationRules
                 },
             ],
             'notes' => 'nullable|string',
+            'introduction' => 'nullable|string|max:5000',
             'payment_terms' => 'nullable|string',
             'lines' => 'required|array|min:1',
             'lines.*.type' => ['nullable', Rule::enum(InvoiceLineType::class)],
             'lines.*.discount_type' => ['nullable', 'in:flat,percentage'],
             'lines.*.description' => 'required|string',
-            'lines.*.quantity' => 'required_unless:lines.*.type,text|numeric|min:0.01',
+            // A text line has no quantity (the form sends 0); an amount line needs one.
+            'lines.*.quantity' => [
+                'required_unless:lines.*.type,text',
+                'numeric',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    $type = $this->input(str_replace('.quantity', '.type', $attribute)) ?? 'item';
+                    if ($type !== 'text' && (float) $value < 0.01) {
+                        $fail('validation.min.numeric')->translate(['min' => '0.01']);
+                    }
+                },
+            ],
             'lines.*.unit_price' => 'required_unless:lines.*.type,text|numeric',
             // Optional record the line was taken from (registered source, a record of this organisation).
             'lines.*.source_type' => ['nullable', 'string', 'max:50', 'required_with:lines.*.source_id'],

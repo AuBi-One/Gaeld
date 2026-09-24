@@ -57,6 +57,7 @@ class StoreInvoiceApiRequest extends FormRequest
                 },
             ],
             'notes' => 'nullable|string',
+            'introduction' => 'nullable|string|max:5000',
             'payment_terms' => 'nullable|string',
             'lines' => 'required|array|min:1|max:500',
             'lines.*.description' => 'required|string',

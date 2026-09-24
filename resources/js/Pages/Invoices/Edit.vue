@@ -48,6 +48,7 @@ const form = useForm({
   issue_date: props.invoice.issue_date?.slice(0, 10) ?? '',
   due_date: props.invoice.due_date?.slice(0, 10) ?? '',
   currency: props.invoice.currency ?? 'CHF',
+  introduction: props.invoice.introduction ?? '',
   notes: props.invoice.notes ?? '',
   payment_terms: props.invoice.payment_terms ?? '',
   tax_treatment: props.invoice.tax_treatment ?? 'standard',
@@ -218,6 +219,13 @@ function onCustomerCreated(customer) {
           <!-- Notes & Terms -->
           <hr class="border-[hsl(var(--border))]" />
           <h3 class="text-sm font-medium text-[hsl(var(--foreground))]">{{ t('notes_and_terms') }}</h3>
+          <FormTextarea
+            id="introduction"
+            v-model="form.introduction"
+            :label="t('introduction')"
+            :placeholder="t('introduction_hint')"
+            :error="form.errors.introduction"
+          />
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormTextarea
               id="notes"

@@ -33,6 +33,7 @@ class DuplicateInvoiceAction
                 'due_date' => now()->addDays(30)->toDateString(),
                 'currency' => $invoice->currency,
                 'notes' => $invoice->notes,
+                'introduction' => $invoice->introduction,
                 'payment_terms' => $invoice->payment_terms,
                 'subtotal' => 0,
                 'vat_amount' => 0,

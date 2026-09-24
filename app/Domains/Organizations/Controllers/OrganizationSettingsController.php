@@ -203,6 +203,18 @@ class OrganizationSettingsController extends Controller
             ->with('success', __('app.communication_settings_updated'));
     }
 
+    public function updatePdfFooter(Request $request, CurrentOrganization $currentOrg): RedirectResponse
+    {
+        $organization = $currentOrg->get();
+        $this->authorize('update', $organization);
+
+        $validated = $request->validate(['pdf_footer_text' => ['nullable', 'string', 'max:255']]);
+        $organization->update(['pdf_footer_text' => $validated['pdf_footer_text'] ?? null]);
+
+        return redirect()->route('settings')
+            ->with('success', __('app.pdf_footer_updated'));
+    }
+
     public function updateModules(Request $request, CurrentOrganization $currentOrg): RedirectResponse
     {
         $organization = $currentOrg->get();

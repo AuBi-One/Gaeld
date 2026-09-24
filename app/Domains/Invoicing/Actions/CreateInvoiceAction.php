@@ -77,6 +77,7 @@ class CreateInvoiceAction
                 'total' => 0,
                 'currency' => $data->currency,
                 'notes' => $data->notes,
+                'introduction' => $data->introduction,
                 'payment_terms' => $data->paymentTerms,
             ]);
 

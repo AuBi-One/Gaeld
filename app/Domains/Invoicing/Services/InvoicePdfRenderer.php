@@ -7,8 +7,11 @@ use App\Domains\Invoicing\Enums\InvoiceTaxTreatment;
 use App\Domains\Invoicing\Enums\InvoiceType;
 use App\Domains\Invoicing\Models\Invoice;
 use App\Domains\Invoicing\Support\InvoicePdfStyle;
+use App\Domains\Invoicing\Support\PaymentTerms;
 use App\Domains\Organizations\Models\Organization;
 use App\Support\Money;
+use App\Support\Pdf\ImageBox;
+use App\Support\Pdf\PdfFooter;
 use Illuminate\Support\Facades\Storage;
 use TCPDF;
 
@@ -79,13 +82,17 @@ class InvoicePdfRenderer
         $logoFullPath = $organization->logo_path
             ? Storage::disk('local')->path($organization->logo_path)
             : null;
+        $organizationY = InvoicePdfStyle::MARGIN_TOP;
         if ($logoFullPath && file_exists($logoFullPath)) {
-            $tcpdf->Image($logoFullPath, InvoicePdfStyle::LOGO_X, InvoicePdfStyle::LOGO_Y, InvoicePdfStyle::LOGO_WIDTH);
+            // The logo keeps its aspect ratio inside a bounded box (wide, square or tall);
+            // the sender block starts below it.
+            $logo = ImageBox::fit($logoFullPath, InvoicePdfStyle::LOGO_WIDTH, InvoicePdfStyle::LOGO_MAX_HEIGHT);
+            $tcpdf->Image($logoFullPath, InvoicePdfStyle::LOGO_X, InvoicePdfStyle::LOGO_Y, $logo['width'], $logo['height']);
+            $organizationY = max(30, InvoicePdfStyle::LOGO_Y + $logo['height'] + 4);
         }
 
         // Organization info (top left, sender position on Swiss business letters)
         $tcpdf->SetFont('Helvetica', 'B', 10);
-        $organizationY = $logoFullPath && file_exists($logoFullPath) ? 30 : InvoicePdfStyle::MARGIN_TOP;
         $tcpdf->SetXY(InvoicePdfStyle::ORGANIZATION_X, $organizationY);
         $tcpdf->Cell(InvoicePdfStyle::ORGANIZATION_WIDTH, 5, $organization->legal_name ?? $organization->name, 0, 1, 'L');
 
@@ -155,8 +162,9 @@ class InvoicePdfRenderer
         $metaLines = [];
         $metaLines[] = $this->t('pdf_date').': '.($invoice->issue_date->format('d.m.Y') ?? '');
         $metaLines[] = $this->t('pdf_due_date').': '.($invoice->due_date->format('d.m.Y') ?? '');
-        if ($invoice->payment_terms) {
-            $metaLines[] = $this->t('pdf_payment_terms').': '.$invoice->payment_terms;
+        $paymentTerms = PaymentTerms::label($invoice->payment_terms, $this->locale);
+        if ($paymentTerms !== null) {
+            $metaLines[] = $this->t('pdf_payment_terms').': '.$paymentTerms;
         }
         $metaLines[] = $this->t('pdf_currency').': '.($invoice->currency ?? 'CHF');
 
@@ -179,6 +187,13 @@ class InvoicePdfRenderer
             $tcpdf->Ln(2);
             $tcpdf->SetFont('Helvetica', '', 8);
             $tcpdf->MultiCell(InvoicePdfStyle::COL_TOTAL_WIDTH, 4, $organization->invoice_header_text, 0, 'L');
+        }
+
+        // Introduction of this invoice (subject, context), before the line items
+        if ($invoice->introduction) {
+            $tcpdf->Ln(2);
+            $tcpdf->SetFont('Helvetica', '', 9);
+            $tcpdf->MultiCell(InvoicePdfStyle::COL_TOTAL_WIDTH, 4, $invoice->introduction, 0, 'L');
         }
 
         $tcpdf->Ln(4);
@@ -272,7 +287,7 @@ class InvoicePdfRenderer
         }
     }
 
-    public function renderFooter(TCPDF $tcpdf): void
+    public function renderFooter(TCPDF $tcpdf, ?Organization $organization = null): void
     {
         $footerY = $tcpdf->getPageHeight() - 12;
 
@@ -287,7 +302,7 @@ class InvoicePdfRenderer
         $tcpdf->SetXY(InvoicePdfStyle::MARGIN_LEFT, $footerY);
         $tcpdf->SetFont('Helvetica', '', 7);
         $tcpdf->SetTextColor(...InvoicePdfStyle::COLOR_LIGHT);
-        $tcpdf->Cell(70, 4, '© '.now()->year.' Gäld', 0, 0, 'L');
+        $tcpdf->Cell(70, 4, PdfFooter::text($organization), 0, 0, 'L');
         $tcpdf->Cell(InvoicePdfStyle::COL_TOTAL_WIDTH - 70, 4, $tcpdf->getAliasNumPage().'/'.$tcpdf->getAliasNbPages(), 0, 1, 'R');
         $tcpdf->SetTextColor(...InvoicePdfStyle::COLOR_BLACK);
         $tcpdf->SetLineWidth(0.2);

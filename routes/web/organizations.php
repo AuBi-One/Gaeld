@@ -29,6 +29,7 @@ Route::put('/settings/invoice', [OrganizationSettingsController::class, 'updateI
 Route::post('/settings/invoice/logo', [OrganizationSettingsController::class, 'uploadLogo'])->name('settings.logo.upload');
 Route::delete('/settings/invoice/logo', [OrganizationSettingsController::class, 'deleteLogo'])->name('settings.logo.delete');
 Route::get('/settings/logo', [OrganizationSettingsController::class, 'serveLogo'])->name('settings.logo');
+Route::put('/settings/pdf-footer', [OrganizationSettingsController::class, 'updatePdfFooter'])->name('settings.pdf-footer');
 Route::put('/settings/pdf-layouts', [PdfLayoutSettingsController::class, 'update'])->name('settings.pdf-layouts');
 Route::put('/settings/communications', [OrganizationSettingsController::class, 'updateCommunications'])->name('settings.communications');
 Route::put('/settings/modules', [OrganizationSettingsController::class, 'updateModules'])->name('settings.modules');

@@ -54,6 +54,7 @@ class UpdateInvoiceApiRequest extends FormRequest
                 },
             ],
             'notes' => 'nullable|string',
+            'introduction' => 'nullable|string|max:5000',
             'payment_terms' => 'nullable|string',
             'lines' => 'sometimes|array|min:1',
             'lines.*.description' => 'required|string',

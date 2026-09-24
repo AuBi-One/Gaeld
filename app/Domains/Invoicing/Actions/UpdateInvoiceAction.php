@@ -30,6 +30,7 @@ class UpdateInvoiceAction
             'due_date' => $data->dueDate,
             'currency' => $data->currency,
             'notes' => $data->notes,
+            'introduction' => $data->introduction,
             'payment_terms' => $data->paymentTerms,
         ];
 

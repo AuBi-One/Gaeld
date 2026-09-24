@@ -40,6 +40,7 @@ use Illuminate\Support\Carbon;
  * @property array<int, int>|null $closed_fiscal_years
  * @property array<string, bool>|null $enabled_modules
  * @property array<string, string>|null $pdf_layouts
+ * @property string|null $pdf_footer_text
  * @property string|null $locale
  * @property BusinessType|null $business_type
  * @property string $setup_mode
@@ -78,6 +79,7 @@ class Organization extends Model
         'invoice_header_text',
         'invoice_footer_text',
         'pdf_layouts',
+        'pdf_footer_text',
         'invoice_email_subject',
         'invoice_email_body',
         'enabled_modules',

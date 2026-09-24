@@ -48,6 +48,7 @@ const form = useForm({
   issue_date: new Date().toISOString().slice(0, 10),
   due_date: '',
   currency: 'CHF',
+  introduction: '',
   notes: props.defaultNotes,
   payment_terms: '',
   tax_treatment: 'standard',
@@ -284,6 +285,13 @@ function onDueDateManualEdit() {
             <div>
               <h3 id="notes-terms-heading" class="text-base font-semibold text-[hsl(var(--foreground))]">{{ t('notes_and_terms') }}</h3>
             </div>
+            <FormTextarea
+              id="introduction"
+              v-model="form.introduction"
+              :label="t('introduction')"
+              :placeholder="t('introduction_hint')"
+              :error="form.errors.introduction"
+            />
             <div class="grid grid-cols-1 gap-6 sm:grid-cols-[minmax(0,1.5fr)_minmax(16rem,1fr)] sm:items-start">
               <FormTextarea
                 id="notes"

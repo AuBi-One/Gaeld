@@ -16,6 +16,7 @@ import ConfirmDialog from '@/Components/UI/ConfirmDialog.vue'
 import { useTranslations } from '@/lib/useTranslations'
 import { currencyOptions, countryOptions } from '@/lib/contactOptions'
 import IbanHint from '@/Components/IbanHint.vue'
+import PdfFooterCard from '@/Components/Settings/PdfFooterCard.vue'
 import PdfLayoutsCard from '@/Components/Settings/PdfLayoutsCard.vue'
 import { Upload, Trash2, Plus } from 'lucide-vue-next'
 
@@ -607,6 +608,9 @@ const businessTypeOptions = [
 
         <!-- PDF layouts added by plugins -->
         <PdfLayoutsCard v-if="pdfLayouts.length" :layouts="pdfLayouts" />
+
+        <!-- Footer line of generated PDFs -->
+        <PdfFooterCard :organization="organization" />
 
         <!-- Invoice texts -->
         <Card>

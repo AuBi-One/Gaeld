@@ -360,6 +360,16 @@ const bankAccountOptions = computed(() =>
         </div>
       </div>
 
+      <!-- Introduction (printed before the line items) -->
+      <Card v-if="invoice?.introduction">
+        <CardHeader>
+          <CardTitle>{{ t('introduction') }}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p class="whitespace-pre-line break-words text-sm">{{ invoice.introduction }}</p>
+        </CardContent>
+      </Card>
+
       <!-- Line Items -->
       <Card>
         <CardHeader>

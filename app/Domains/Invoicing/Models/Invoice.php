@@ -43,6 +43,7 @@ use Laravel\Scout\Searchable;
  * @property string $total
  * @property string $currency
  * @property string|null $notes
+ * @property string|null $introduction
  * @property string|null $payment_terms
  * @property string|null $qr_reference
  * @property string|null $qr_type
@@ -92,6 +93,7 @@ class Invoice extends Model
         'total',
         'currency',
         'notes',
+        'introduction',
         'payment_terms',
         'qr_reference',
         'qr_type',

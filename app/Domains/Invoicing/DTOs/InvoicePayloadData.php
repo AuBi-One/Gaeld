@@ -28,6 +28,7 @@ abstract readonly class InvoicePayloadData
         public ?string $paymentTerms,
         public array $lines,
         public InvoiceTaxTreatment $taxTreatment = InvoiceTaxTreatment::Standard,
+        public ?string $introduction = null,
     ) {}
 
     /** @param  array<string, mixed>  $data */
@@ -43,6 +44,7 @@ abstract readonly class InvoicePayloadData
             dueDate: $data['due_date'] ?? null,
             currency: $data['currency'] ?? 'CHF',
             notes: $data['notes'] ?? null,
+            introduction: $data['introduction'] ?? null,
             paymentTerms: $data['payment_terms'] ?? null,
             lines: array_map(fn (array $line) => InvoiceLineData::fromArray($line), $data['lines']),
             taxTreatment: InvoiceTaxTreatment::tryFrom($data['tax_treatment'] ?? InvoiceTaxTreatment::Standard->value)
@@ -61,6 +63,7 @@ abstract readonly class InvoicePayloadData
             'due_date' => $this->dueDate,
             'currency' => $this->currency,
             'notes' => $this->notes,
+            'introduction' => $this->introduction,
             'payment_terms' => $this->paymentTerms,
             'lines' => array_map(fn (InvoiceLineData $line) => $line->toArray(), $this->lines),
             'tax_treatment' => $this->taxTreatment->value,
