@@ -16,6 +16,7 @@ import ConfirmDialog from '@/Components/UI/ConfirmDialog.vue'
 import { useTranslations } from '@/lib/useTranslations'
 import { currencyOptions, countryOptions } from '@/lib/contactOptions'
 import IbanHint from '@/Components/IbanHint.vue'
+import PdfLayoutsCard from '@/Components/Settings/PdfLayoutsCard.vue'
 import { Upload, Trash2, Plus } from 'lucide-vue-next'
 
 const props = defineProps({
@@ -24,6 +25,7 @@ const props = defineProps({
   expenseCategories: { type: Array, default: () => [] },
   catalogItems: { type: Array, default: () => [] },
   vatRates: { type: Array, default: () => [] },
+  pdfLayouts: { type: Array, default: () => [] },
   modules: { type: Array, default: () => [] },
   modulePresets: { type: Object, default: () => ({}) },
   pendingFiscalYearChange: { type: Object, default: null },
@@ -602,6 +604,9 @@ const businessTypeOptions = [
             </div>
           </CardContent>
         </Card>
+
+        <!-- PDF layouts added by plugins -->
+        <PdfLayoutsCard v-if="pdfLayouts.length" :layouts="pdfLayouts" />
 
         <!-- Invoice texts -->
         <Card>

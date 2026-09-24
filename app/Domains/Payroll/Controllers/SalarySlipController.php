@@ -13,12 +13,15 @@ use App\Domains\Payroll\Requests\PayrollAdjustmentRules;
 use App\Domains\Payroll\Services\PayrollCalculator;
 use App\Http\Controllers\Controller;
 use App\Support\FeatureFlag;
+use App\Support\Pdf\PdfLayouts;
 use App\Support\PdfExportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\HeaderUtils;
 use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 /**
@@ -198,17 +201,26 @@ class SalarySlipController extends Controller
             ->with('success', __('app.salary_slip_deleted'));
     }
 
-    public function downloadPdf(SalarySlip $slip, PdfExportService $pdf): HttpResponse
+    public function downloadPdf(SalarySlip $slip, PdfExportService $pdf, PdfLayouts $layouts): HttpResponse
     {
         $this->authorize('view', $slip);
 
         $employeeData = $slip->employeeDocumentData();
         $slip->loadMissing('organization');
+        $filename = "salary-slip-{$employeeData['last_name']}-{$slip->period_year}-{$slip->period_month}.pdf";
+
+        $layout = $layouts->salarySlip($slip->organization);
+        if ($layout !== null) {
+            return new HttpResponse($layout->renderSalarySlip($slip, $slip->organization), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, $filename, Str::ascii($filename)),
+            ]);
+        }
 
         return $pdf->download(
             'exports.salary-slip',
             ['slip' => $slip, 'employeeData' => $employeeData, 'organization' => $slip->organization],
-            "salary-slip-{$employeeData['last_name']}-{$slip->period_year}-{$slip->period_month}.pdf",
+            $filename,
         );
     }
 }

@@ -7,6 +7,7 @@ use App\Domains\Organizations\Controllers\MemberController;
 use App\Domains\Organizations\Controllers\OnboardingWizardController;
 use App\Domains\Organizations\Controllers\OrganizationController;
 use App\Domains\Organizations\Controllers\OrganizationSettingsController;
+use App\Domains\Organizations\Controllers\PdfLayoutSettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::resource('organizations', OrganizationController::class)->only(['index', 'create', 'show', 'store', 'destroy']);
@@ -28,6 +29,7 @@ Route::put('/settings/invoice', [OrganizationSettingsController::class, 'updateI
 Route::post('/settings/invoice/logo', [OrganizationSettingsController::class, 'uploadLogo'])->name('settings.logo.upload');
 Route::delete('/settings/invoice/logo', [OrganizationSettingsController::class, 'deleteLogo'])->name('settings.logo.delete');
 Route::get('/settings/logo', [OrganizationSettingsController::class, 'serveLogo'])->name('settings.logo');
+Route::put('/settings/pdf-layouts', [PdfLayoutSettingsController::class, 'update'])->name('settings.pdf-layouts');
 Route::put('/settings/communications', [OrganizationSettingsController::class, 'updateCommunications'])->name('settings.communications');
 Route::put('/settings/modules', [OrganizationSettingsController::class, 'updateModules'])->name('settings.modules');
 

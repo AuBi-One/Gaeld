@@ -3,6 +3,7 @@
 namespace App\Domains\Payroll\Mail;
 
 use App\Domains\Payroll\Models\SalarySlip;
+use App\Support\Pdf\PdfLayouts;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Mail\Attachment;
 use Illuminate\Mail\Mailable;
@@ -45,13 +46,16 @@ class SalarySlipReadyMail extends Mailable
         $employeeData = $slip->employeeDocumentData();
         $slip->loadMissing('organization');
 
-        $pdf = Pdf::loadView('exports.salary-slip', [
-            'slip' => $slip,
-            'employeeData' => $employeeData,
-            'organization' => $slip->organization,
-        ])
-            ->setPaper('A4', 'portrait')
-            ->output();
+        $layout = app(PdfLayouts::class)->salarySlip($slip->organization);
+        $pdf = $layout !== null
+            ? $layout->renderSalarySlip($slip, $slip->organization)
+            : Pdf::loadView('exports.salary-slip', [
+                'slip' => $slip,
+                'employeeData' => $employeeData,
+                'organization' => $slip->organization,
+            ])
+                ->setPaper('A4', 'portrait')
+                ->output();
 
         return [
             Attachment::fromData(

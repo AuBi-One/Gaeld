@@ -26,6 +26,7 @@ use App\Domains\Organizations\Requests\UploadLogoRequest;
 use App\Domains\Organizations\Services\CurrentOrganization;
 use App\Domains\Organizations\Services\OrganizationService;
 use App\Http\Controllers\Controller;
+use App\Support\Pdf\PdfLayouts;
 use App\Support\Services\FileUploadService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -45,7 +46,7 @@ class OrganizationSettingsController extends Controller
         private OrganizationService $organizationService,
     ) {}
 
-    public function show(CurrentOrganization $currentOrg): Response
+    public function show(CurrentOrganization $currentOrg, PdfLayouts $pdfLayouts): Response
     {
         $organization = $currentOrg->get();
 
@@ -62,6 +63,7 @@ class OrganizationSettingsController extends Controller
             'expenseCategories' => ExpenseCategoryQuery::all(),
             'catalogItems' => InvoiceCatalogItemQuery::all(),
             'vatRates' => VatRateQuery::active(),
+            'pdfLayouts' => $pdfLayouts->forSettings($organization),
             'modules' => OrganizationModule::values(),
             'modulePresets' => OrganizationModule::presets(),
             'pendingFiscalYearChange' => FiscalYearChangeRequest::query()

@@ -39,6 +39,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $fiscal_year_start
  * @property array<int, int>|null $closed_fiscal_years
  * @property array<string, bool>|null $enabled_modules
+ * @property array<string, string>|null $pdf_layouts
  * @property string|null $locale
  * @property BusinessType|null $business_type
  * @property string $setup_mode
@@ -76,6 +77,7 @@ class Organization extends Model
         'logo_path',
         'invoice_header_text',
         'invoice_footer_text',
+        'pdf_layouts',
         'invoice_email_subject',
         'invoice_email_body',
         'enabled_modules',
@@ -92,6 +94,7 @@ class Organization extends Model
             'default_payment_terms_days' => 'integer',
             'closed_fiscal_years' => 'array',
             'enabled_modules' => 'array',
+            'pdf_layouts' => 'array',
             'business_type' => BusinessType::class,
             'founded_at' => 'date',
             'suspended_at' => 'datetime',
