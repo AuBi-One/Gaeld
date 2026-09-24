@@ -72,3 +72,6 @@ docker/systemd/gaeld-worker.service
 /storage/app/qa/
 /.env.qa
 /scripts/qa/.env.qa
+# Font cache of the PDF engines and scratch PDFs written by tinker/e2e runs
+/storage/fonts/
+/storage/app/*.pdf
