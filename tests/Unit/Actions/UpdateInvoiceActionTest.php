@@ -69,6 +69,7 @@ class UpdateInvoiceActionTest extends TestCase
             'due_date' => '2025-03-03',
             'currency' => 'EUR',
             'notes' => 'Updated notes',
+            'introduction' => null,
             'payment_terms' => '30 days',
         ]);
         $invoice->shouldReceive('recalculate')->once();
