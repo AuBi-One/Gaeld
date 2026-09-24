@@ -32,6 +32,18 @@ class GeneratePayrollRunAction
         $employees = $this->employees($orgId, $month, $year, $employeeIds);
         $adjustmentsByEmployee = collect($adjustments)->keyBy('employee_id');
 
+        // Employees who already have a slip for the period are skipped.
+        $employees = $employees->reject(fn (Employee $employee): bool => SalarySlip::where('employee_id', $employee->id)
+            ->where('period_month', $month)
+            ->where('period_year', $year)
+            ->exists());
+
+        // Resolve every employee's items first, so an invalid item creates no slip at all.
+        $items = [];
+        foreach ($employees as $employee) {
+            $items[$employee->id] = $this->resolveItems($employee, $adjustmentsByEmployee->get($employee->id, []), $month, $year);
+        }
+
         $slips = collect();
         foreach ($employees as $employee) {
             $exists = SalarySlip::where('employee_id', $employee->id)
@@ -44,14 +56,15 @@ class GeneratePayrollRunAction
             }
 
             $adjustment = $adjustmentsByEmployee->get($employee->id, []);
-            $slip = DB::transaction(function () use ($employee, $month, $year, $shouldPost, $adjustment): SalarySlip {
+            $resolved = $items[$employee->id];
+            $slip = DB::transaction(function () use ($employee, $month, $year, $shouldPost, $adjustment, $resolved): SalarySlip {
                 $slip = $this->calculator->calculate(
                     $employee,
                     $month,
                     $year,
                     (int) ($adjustment['unpaid_leave_days'] ?? 0),
                     (string) ($adjustment['reimbursement_amount'] ?? '0.00'),
-                    $this->resolveItems($employee, $adjustment),
+                    $resolved,
                 );
                 $slip->save();
 
@@ -89,23 +102,35 @@ class GeneratePayrollRunAction
                     $year,
                     (int) ($adjustment['unpaid_leave_days'] ?? 0),
                     (string) ($adjustment['reimbursement_amount'] ?? '0.00'),
-                    $this->resolveItems($employee, $adjustment),
+                    $this->resolveItems($employee, $adjustment, $month, $year),
                 );
             })
             ->values();
     }
 
     /**
+     * Resolve the ticked items; an item dated after the period cannot be paid
+     * with this salary (the run screen does not offer it).
+     *
      * @param  array<string, mixed>  $adjustment
      * @return list<array{id: string, date: string, label: string, amount: string, account_code: string}>
      */
-    private function resolveItems(Employee $employee, array $adjustment): array
+    private function resolveItems(Employee $employee, array $adjustment, int $month, int $year): array
     {
         $ids = array_values(array_map('strval', (array) ($adjustment['reimbursement_item_ids'] ?? [])));
+        if ($ids === []) {
+            return [];
+        }
 
-        return $ids === []
-            ? []
-            : $this->reimbursements->resolve((string) $employee->organization_id, (string) $employee->id, $ids);
+        $items = $this->reimbursements->resolve((string) $employee->organization_id, (string) $employee->id, $ids);
+        $periodEnd = Carbon::create($year, $month)->endOfMonth()->toDateString();
+        foreach ($items as $item) {
+            if ($item['date'] > $periodEnd) {
+                throw new \DomainException(__('app.reimbursement_item_after_period', ['label' => $item['label'], 'date' => $periodEnd]));
+            }
+        }
+
+        return $items;
     }
 
     /**

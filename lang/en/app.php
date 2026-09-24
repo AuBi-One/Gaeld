@@ -1484,6 +1484,7 @@ return [
     'reimbursement_amount' => 'Expense reimbursement (CHF)',
     'expense_reimbursement' => 'Expense reimbursement',
     'reimbursement_items' => 'Open expense claims',
+    'reimbursement_item_after_period' => '":label" is dated after the salary month (:date): it cannot be paid with this salary.',
     'reimbursement_items_desc' => 'Ticked claims are paid with this salary; unticked ones stay open.',
     'reimbursement_amount_other' => 'Other reimbursement (CHF)',
     'thirteenth_salary' => '13th salary',

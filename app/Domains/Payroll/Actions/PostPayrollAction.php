@@ -217,10 +217,16 @@ class PostPayrollAction
             array_map(fn (array $item): string => (string) $item['id'], $stored),
         );
 
-        $storedTotal = array_reduce($stored, fn (string $sum, array $item): string => Money::add($sum, (string) $item['amount']), Money::zero());
-        $currentTotal = array_reduce($current, fn (string $sum, array $item): string => Money::add($sum, $item['amount']), Money::zero());
-        if (Money::compare($storedTotal, $currentTotal) !== 0) {
-            throw new \DomainException('Reimbursement items changed since the salary slip was generated. Delete and regenerate the slip.');
+        // Each item must still have the amount stored on the slip, and its splits must add up to it.
+        $storedAmounts = array_column($stored, 'amount', 'id');
+        foreach ($current as $item) {
+            $splits = $item['splits'] ?? [['account_code' => $item['account_code'], 'amount' => $item['amount']]];
+            $splitTotal = array_reduce($splits, fn (string $sum, array $split): string => Money::add($sum, $split['amount']), Money::zero());
+            if (! isset($storedAmounts[$item['id']])
+                || Money::compare((string) $storedAmounts[$item['id']], $item['amount']) !== 0
+                || Money::compare($splitTotal, $item['amount']) !== 0) {
+                throw new \DomainException('Reimbursement items changed since the salary slip was generated. Delete and regenerate the slip.');
+            }
         }
 
         return $current;

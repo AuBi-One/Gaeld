@@ -1369,6 +1369,7 @@ return [
     'reimbursement_amount' => 'Rimborso spese (CHF)',
     'expense_reimbursement' => 'Rimborso spese',
     'reimbursement_items' => 'Note spese aperte',
+    'reimbursement_item_after_period' => '«:label» è datato dopo il mese dello stipendio (:date): non può essere pagato con questo stipendio.',
     'reimbursement_items_desc' => 'Le note selezionate sono pagate con questo stipendio; le altre restano aperte.',
     'reimbursement_amount_other' => 'Altro rimborso (CHF)',
     'thirteenth_salary' => '13a mensilità',

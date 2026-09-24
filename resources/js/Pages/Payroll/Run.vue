@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import AppLayout from '@/Components/AppLayout.vue'
 import Card from '@/Components/UI/Card.vue'
 import CardHeader from '@/Components/UI/CardHeader.vue'
@@ -25,8 +25,10 @@ const props = defineProps({
   reimbursementItems: { type: Object, default: () => ({}) },
 })
 
+// Items dated after the salary month are not offered (they cannot be paid with it).
 function itemsFor(employeeId) {
-  return props.reimbursementItems?.[employeeId] ?? []
+  const end = periodEnd.value
+  return (props.reimbursementItems?.[employeeId] ?? []).filter(item => !item.date || item.date <= end)
 }
 
 // Step state: 1=Select, 2=Preview, 3=Generate, 4=Post
@@ -76,6 +78,18 @@ const year = ref(
       : String(lastMonthYear)
   })()
 )
+// Last day of the selected month, YYYY-MM-DD
+const periodEnd = computed(() => {
+  const last = new Date(Date.UTC(Number(year.value), Number(month.value), 0))
+  return last.toISOString().slice(0, 10)
+})
+// Changing the month drops ticked items that are no longer offered.
+watch([month, year], () => {
+  for (const [employeeId, adjustment] of Object.entries(adjustments.value)) {
+    const offered = new Set(itemsFor(employeeId).map(item => item.id))
+    adjustment.reimbursement_item_ids = adjustment.reimbursement_item_ids.filter(id => offered.has(id))
+  }
+})
 const preview = ref([])
 const generatedSlipIds = ref([])
 const generating = ref(false)

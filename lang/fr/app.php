@@ -1401,6 +1401,7 @@ return [
     'reimbursement_amount' => 'Remboursement de frais (CHF)',
     'expense_reimbursement' => 'Remboursement de frais',
     'reimbursement_items' => 'Notes de frais ouvertes',
+    'reimbursement_item_after_period' => '« :label » est daté après le mois du salaire (:date) : il ne peut pas être payé avec ce salaire.',
     'reimbursement_items_desc' => 'Les notes cochées sont payées avec ce salaire ; les autres restent ouvertes.',
     'reimbursement_amount_other' => 'Autre remboursement (CHF)',
     'thirteenth_salary' => '13e salaire',

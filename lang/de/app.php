@@ -1406,6 +1406,7 @@ return [
     'reimbursement_amount' => 'Spesenrückerstattung (CHF)',
     'expense_reimbursement' => 'Spesenrückerstattung',
     'reimbursement_items' => 'Offene Spesenabrechnungen',
+    'reimbursement_item_after_period' => '«:label» ist nach dem Lohnmonat (:date) datiert: es kann nicht mit diesem Lohn bezahlt werden.',
     'reimbursement_items_desc' => 'Angekreuzte Abrechnungen werden mit diesem Lohn bezahlt; die übrigen bleiben offen.',
     'reimbursement_amount_other' => 'Andere Rückerstattung (CHF)',
     'thirteenth_salary' => '13. Monatslohn',
