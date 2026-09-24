@@ -212,26 +212,26 @@ class SchemaIntegrityTest extends ExpenseClaimsTestCase
         $indexes = fn (string $table): array => array_column(Schema::getIndexes($table), 'name');
         $this->assertContains(['journal_entry_id'], $foreignKeys('ec_claims'));
 
-        // migrate:reset with the plugin path rolls back every plugin migration (found by name), nothing else.
+        // migrate:reset with the plugin path rolls back the plugin's (single, squashed) migration, nothing else.
         $this->artisan('migrate:reset', ['--path' => 'plugins/expense-claims/migrations', '--force' => true])->assertSuccessful();
         $this->assertFalse(Schema::hasTable('ec_claims'));
+        $this->assertFalse(Schema::hasTable('ec_settings'));
         $this->assertTrue(Schema::hasTable('journal_entries'));
 
         $this->artisan('migrate', ['--path' => 'plugins/expense-claims/migrations', '--force' => true])->assertSuccessful();
         $this->assertContains(['journal_entry_id'], $foreignKeys('ec_claims'));
         $this->assertContains(['settlement_entry_id'], $foreignKeys('ec_claims'));
+        $this->assertContains(['salary_slip_id'], $foreignKeys('ec_claims'));
         $this->assertContains(['contact_id'], $foreignKeys('ec_places'));
+        $this->assertContains(['contact_id'], $foreignKeys('ec_people'));
         $this->assertContains(['organization_id'], $foreignKeys('ec_debt_repayments'));
+        $this->assertContains(['journal_entry_id'], $foreignKeys('ec_debt_records'));
+        $this->assertTrue(Schema::hasColumn('ec_debt_records', 'entry_expected'));
         $this->assertContains('ec_vehicle_rates_organization_id_vehicle_type_valid_from_unique', $indexes('ec_vehicle_rates'));
-        $this->assertNotContains('ec_vehicle_rates_organization_id_vehicle_type_valid_from_index', $indexes('ec_vehicle_rates'));
-
-        // Each step is reversible on its own: the six review migrations (F1–N1) down and up again.
-        $this->artisan('migrate:rollback', ['--path' => 'plugins/expense-claims/migrations', '--step' => 6, '--force' => true])->assertSuccessful();
-        $this->assertNotContains(['journal_entry_id'], $foreignKeys('ec_claims'));
-        $this->assertFalse(Schema::hasColumn('ec_debt_records', 'entry_expected'));
-        $this->assertFalse(Schema::hasColumn('ec_debt_repayments', 'organization_id'));
-        $this->assertContains('ec_vehicle_rates_organization_id_vehicle_type_valid_from_index', $indexes('ec_vehicle_rates'));
-        $this->artisan('migrate', ['--path' => 'plugins/expense-claims/migrations', '--force' => true])->assertSuccessful();
-        $this->assertTrue(Schema::hasColumn('ec_debt_repayments', 'organization_id'));
+        $this->assertContains('ec_claims_organization_id_person_id_status_index', $indexes('ec_claims'));
+        // Dropped in the squash (N2): the plain *_entry_id indexes serve those lookups.
+        $this->assertNotContains('ec_claims_organization_id_journal_entry_id_index', $indexes('ec_claims'));
+        $this->assertNotContains('ec_claims_organization_id_settlement_entry_id_index', $indexes('ec_claims'));
+        $this->assertNotContains('ec_debt_records_organization_id_journal_entry_id_index', $indexes('ec_debt_records'));
     }
 }
