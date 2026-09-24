@@ -1,0 +1,10 @@
+{
+    "name": "Document layouts",
+    "slug": "document-layouts",
+    "version": "0.1.0",
+    "description": "PDF layouts after AuBi-One's Word models for the core invoice (the Swiss QR-bill stays core's) and the core salary slip. Chosen per organisation in Settings > Invoice > PDF layouts.",
+    "author": "AuBi-One",
+    "provider": "Plugins\\DocumentLayouts\\DocumentLayoutsServiceProvider",
+    "enabled": true,
+    "requires": ["offers"]
+}
