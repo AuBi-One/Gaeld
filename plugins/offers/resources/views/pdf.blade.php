@@ -39,7 +39,6 @@
     /* dompdf multiplies a unitless line-height by the font height (1.34 em for Carlito): 0.91 ≈ Word single spacing (1.22 em). */
     p { margin: 0; }
     .header { height: 31mm; }
-    .logo { height: 24mm; }
     table.addresses { width: 100%; border-collapse: collapse; }
     table.addresses td { vertical-align: top; padding: 0; }
     td.recipient { width: 71mm; }
@@ -66,7 +65,7 @@
 </head>
 <body>
 <div class="header">
-    @if($logo)<img class="logo" src="{{ $logo }}" alt="">@endif
+    @if($logo)<img src="{{ $logo }}" alt="" style="width: {{ $logoSize['width'] }}mm; height: {{ $logoSize['height'] }}mm">@endif
 </div>
 
 <table class="addresses">

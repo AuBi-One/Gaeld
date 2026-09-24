@@ -34,6 +34,22 @@ final class Format
         return strrev(trim(chunk_split(strrev((string) preg_replace('/\s+/', '', $reference)), 5, ' ')));
     }
 
+    /**
+     * What the bank box says about the payment terms: free text as entered, or the
+     * model's phrase for a number of days (typed, else from the dates; none for 0).
+     *
+     * @return array{text: ?string, days: int}
+     */
+    public static function paymentTerms(?string $terms, int $daysFromDates): array
+    {
+        $terms = trim((string) $terms);
+        if ($terms !== '' && preg_match('/\A\d{1,9}\z/', $terms) !== 1) {
+            return ['text' => $terms, 'days' => 0];
+        }
+
+        return ['text' => null, 'days' => $terms !== '' ? (int) $terms : max(0, $daysFromDates)];
+    }
+
     /** One of the documents' languages (fr, de, it, en). */
     public static function language(?string $locale): string
     {

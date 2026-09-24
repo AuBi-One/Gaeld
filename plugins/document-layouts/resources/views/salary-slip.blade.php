@@ -17,7 +17,7 @@
     body { font-family: 'Carlito', 'DejaVu Sans', sans-serif; font-size: 11pt; color: #000; line-height: 0.91; }
     /* dompdf multiplies a unitless line-height by the font height (1.34 em for Carlito): 0.91 ≈ Word single spacing. */
     .header { height: 29mm; }
-    .logo { height: 24mm; }
+    .footer { position: fixed; bottom: -14mm; left: 0; right: 0; font-size: 8pt; color: #646464; }
     table { border-collapse: collapse; }
     table.addresses { width: 100%; }
     table.addresses td { vertical-align: top; padding: 0; }
@@ -43,7 +43,7 @@
 </head>
 <body>
 <div class="header">
-    @if($logo)<img class="logo" src="{{ $logo }}" alt="">@endif
+    @if($logo)<img src="{{ $logo }}" alt="" style="width: {{ $logoSize['width'] }}mm; height: {{ $logoSize['height'] }}mm">@endif
 </div>
 
 <table class="addresses">
@@ -114,5 +114,6 @@
     <tr><td class="label">{{ $t('payment') }} :</td><td>IBAN {{ $iban }}</td></tr>
 </table>
 @endif
+@if($footer)<div class="footer">{{ $footer }}</div>@endif
 </body>
 </html>

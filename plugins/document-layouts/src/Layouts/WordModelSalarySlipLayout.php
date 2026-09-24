@@ -8,6 +8,7 @@ use App\Domains\Payroll\Models\DeductionRate;
 use App\Domains\Payroll\Models\Employee;
 use App\Domains\Payroll\Models\SalarySlip;
 use App\Support\Money;
+use App\Support\Pdf\PdfFooter;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\File;
@@ -82,6 +83,8 @@ final class WordModelSalarySlipLayout implements SalarySlipPdfLayoutInterface
         return view('document-layouts::salary-slip', [
             'letterhead' => $letterhead,
             'logo' => $letterhead->logoDataUri(),
+            'logoSize' => $letterhead->logoSize(60, 24),
+            'footer' => trim((string) $organization->pdf_footer_text) !== '' ? PdfFooter::text($organization) : null,
             'language' => $language,
             'employeeName' => trim($employee['first_name'].' '.$employee['last_name']),
             'ahvNumber' => $employee['ahv_number'],

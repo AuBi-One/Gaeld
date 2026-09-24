@@ -3,6 +3,7 @@
 namespace Plugins\Offers\Services;
 
 use App\Domains\Organizations\Models\Organization;
+use App\Support\Pdf\ImageBox;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
@@ -67,6 +68,7 @@ class OfferPdf
             'recipient' => $recipient,
             'layout' => $layout = Layout::normalize($offer->layout),
             'logo' => $layout['from']['logo'] ? $this->logo($organization) : null,
+            'logoSize' => $this->logoSize($organization),
             'settings' => OfferSetting::for($offer->organization_id),
             'intro' => $this->markdown($offer->intro, $placeholders),
             'closing' => $this->markdown($offer->closing, $placeholders),
@@ -109,6 +111,21 @@ class OfferPdf
         $html = strtr($html, array_combine(array_values($tokens), array_values($placeholders)));
 
         return (string) preg_replace('/<img\b[^>]*>/i', '', $html);
+    }
+
+    /**
+     * Width and height (mm) of the logo inside 60 × 24 mm, keeping its aspect ratio
+     * (a fixed height alone would let a wide logo overflow the header).
+     *
+     * @return array{width: float, height: float}
+     */
+    private function logoSize(Organization $organization): array
+    {
+        $path = $organization->logo_path;
+
+        return $path && Storage::disk('local')->exists($path)
+            ? ImageBox::fit(Storage::disk('local')->path($path), 60, 24)
+            : ['width' => 24.0, 'height' => 24.0];
     }
 
     /** The logo as a data URI, so dompdf never reads files or URLs on its own. */

@@ -152,6 +152,12 @@ class DocumentLayoutsTest extends DocumentLayoutsTestCase
         $this->assertSame('8.1 %', Format::rate('8.1000'));
         $this->assertSame('21 00000 00003 13947 14300 09017', Format::reference('210000000003139471430009017'));
         $this->assertSame('fr', Format::language('rm'));
+        // Bank box: free text wins over the dates; a number of days (typed or from the dates) gets the phrase; 0 nothing.
+        $this->assertSame(['text' => '30 jours net', 'days' => 0], Format::paymentTerms('30 jours net', 30));
+        $this->assertSame(['text' => null, 'days' => 45], Format::paymentTerms(' 45 ', 30));
+        $this->assertSame(['text' => null, 'days' => 30], Format::paymentTerms(null, 30));
+        $this->assertSame(['text' => null, 'days' => 0], Format::paymentTerms('', -5));
+        $this->assertSame(['text' => null, 'days' => 0], Format::paymentTerms('0', 30));
     }
 
     private function invoice(int $lines): Invoice

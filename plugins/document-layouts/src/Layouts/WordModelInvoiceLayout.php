@@ -11,6 +11,7 @@ use App\Domains\Invoicing\Models\Invoice;
 use App\Domains\Invoicing\Models\InvoiceLine;
 use App\Domains\Organizations\Models\Organization;
 use App\Support\Money;
+use App\Support\Pdf\PdfFooter;
 use Plugins\DocumentLayouts\Support\Carlito;
 use Plugins\DocumentLayouts\Support\Format;
 use Plugins\DocumentLayouts\Support\Letterhead;
@@ -18,8 +19,8 @@ use TCPDF;
 
 /**
  * The invoice pages after AuBi-One's Word model (MODELE_FACTURE.docx): logo in
- * the header, sender and recipient side by side, title and date, notes in a
- * grey box, one bordered 5-column table with VAT and "Total TVA incluse",
+ * the header, sender and recipient side by side, title and date, the
+ * introduction in a grey box, one bordered 5-column table with VAT and "Total TVA incluse",
  * then a box with the bank details, payment terms and thanks. Carlito 11 pt
  * (Calibri metrics). Core adds the QR-bill payment part on the next page, in
  * place of the model's small QR image (Swiss Payment Standards: 46 mm code in
@@ -159,13 +160,13 @@ final class WordModelInvoiceLayout implements InvoicePdfLayoutInterface
 
     private function texts(Invoice $invoice, Organization $organization): void
     {
-        $notes = trim((string) $invoice->notes);
-        if ($notes !== '') {
-            // Grey box as wide as its text (the model's autofit table), at most the text width.
+        $introduction = trim((string) $invoice->introduction);
+        if ($introduction !== '') {
+            // The model's "Concerne" box: grey, as wide as its text (autofit table), at most the text width.
             $this->font('I', 11);
-            $longest = max(array_map(fn (string $line): float => $this->pdf->GetStringWidth($line), explode("\n", $notes)));
+            $longest = max(array_map(fn (string $line): float => $this->pdf->GetStringWidth($line), explode("\n", $introduction)));
             $width = min(self::WIDTH, $longest + 2 * self::PAD + 1);
-            $this->multi(self::LEFT, $width, $notes, 'L', self::SHADE, 0.3);
+            $this->multi(self::LEFT, $width, $introduction, 'L', self::SHADE, 0.3);
             $this->y += 3;
         }
         $header = trim((string) $organization->invoice_header_text);
@@ -294,10 +295,11 @@ final class WordModelInvoiceLayout implements InvoicePdfLayoutInterface
             $left[] = ['IBAN '.Format::iban($invoice->qr_iban), '', 12];
             $left[] = ['', '', 11];
         }
-        $terms = trim((string) $invoice->payment_terms);
-        $days = max(0, (int) $invoice->issue_date->diffInDays($invoice->due_date, false));
-        if ($terms !== '' || $days > 0) {
-            $left[] = [$terms !== '' ? $terms : $this->t('payment_days', ['days' => $days]), '', 11];
+        $terms = Format::paymentTerms($invoice->payment_terms, (int) $invoice->issue_date->diffInDays($invoice->due_date, false));
+        if ($terms['text'] !== null) {
+            $left[] = [$terms['text'], '', 11];
+        } elseif ($terms['days'] > 0) {
+            $left[] = [$this->t('payment_days', ['days' => $terms['days']]), '', 11];
         }
         $left[] = [$this->t('due_date').' '.$invoice->due_date->format('d.m.Y'), '', 11];
         if ($invoice->qr_reference) {
@@ -334,11 +336,29 @@ final class WordModelInvoiceLayout implements InvoicePdfLayoutInterface
         $this->pdf->SetTextColor(0, 0, 0);
         $this->y += $height + 3;
 
+        $notes = trim((string) $invoice->notes);
+        if ($notes !== '') {
+            $this->font('', 10);
+            $this->multi(self::LEFT, self::WIDTH, $notes, 'L', null, 0);
+            $this->y += 2;
+        }
         $footer = trim((string) $organization->invoice_footer_text);
         if ($footer !== '') {
             $this->font('', 9);
             $this->pdf->SetTextColor(100, 100, 100);
             $this->multi(self::LEFT, self::WIDTH, $footer, 'L', null, 0);
+            $this->pdf->SetTextColor(0, 0, 0);
+        }
+
+        // The model has no footer; the organisation's PDF footer text, when set, goes on every page.
+        if (trim((string) $organization->pdf_footer_text) !== '') {
+            $this->font('', 8);
+            $this->pdf->SetTextColor(100, 100, 100);
+            for ($page = 1; $page <= $this->pdf->getNumPages(); $page++) {
+                $this->pdf->setPage($page);
+                $this->text(self::LEFT, 297 - 12.7 - 3.5, self::WIDTH, PdfFooter::text($organization));
+            }
+            $this->pdf->lastPage();
             $this->pdf->SetTextColor(0, 0, 0);
         }
     }

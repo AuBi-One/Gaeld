@@ -3,6 +3,7 @@
 namespace Plugins\DocumentLayouts\Support;
 
 use App\Domains\Organizations\Models\Organization;
+use App\Support\Pdf\ImageBox;
 use Illuminate\Support\Facades\Storage;
 use Plugins\Offers\Models\OfferSetting;
 
@@ -53,6 +54,19 @@ final class Letterhead
         $mime = Storage::disk('local')->mimeType($this->logoPath) ?: '';
 
         return in_array($mime, ['image/png', 'image/jpeg'], true) ? Storage::disk('local')->path($this->logoPath) : null;
+    }
+
+    /**
+     * Width and height (mm) of the logo scaled to fit a box, keeping its aspect ratio
+     * (a wide logo would otherwise overflow a fixed height in dompdf).
+     *
+     * @return array{width: float, height: float}|null
+     */
+    public function logoSize(float $maxWidth, float $maxHeight): ?array
+    {
+        $file = $this->logoFile();
+
+        return $file === null ? null : ImageBox::fit($file, $maxWidth, $maxHeight);
     }
 
     /** The logo as a data URI, so dompdf never reads files or URLs on its own. */
