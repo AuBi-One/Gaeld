@@ -2378,6 +2378,8 @@ return [
     'journal_entry_owned' => 'Created by :source. Manage it there.',
     'journal_entry_source' => 'Source',
     'journal_source_salary_slip' => 'Salary slip :period — :employee',
+    'journal_source_invoice' => 'Invoice :number',
+    'journal_source_invoice_payment' => 'Payment of invoice :number',
     'unpost_salary_slip_draft_confirm' => 'Unpost this salary slip? Its journal entry is still a draft: it will be deleted. Posting the slip again rebuilds the entry from the payroll calculation, so lines entered by hand or migrated are replaced.',
     'salary_slip_unposted_draft_deleted' => 'Salary slip unposted; its draft journal entry was deleted. Posting the slip again rebuilds the entry from the payroll calculation.',
 

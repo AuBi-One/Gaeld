@@ -2300,6 +2300,8 @@ return [
     'journal_entry_owned' => 'Erstellt durch :source. Dort bearbeiten.',
     'journal_entry_source' => 'Herkunft',
     'journal_source_salary_slip' => 'Lohnabrechnung :period — :employee',
+    'journal_source_invoice' => 'Rechnung :number',
+    'journal_source_invoice_payment' => 'Zahlung der Rechnung :number',
     'unpost_salary_slip_draft_confirm' => 'Verbuchung dieser Gehaltsabrechnung rückgängig machen? Die Buchung ist noch ein Entwurf und wird gelöscht. Beim erneuten Verbuchen wird die Buchung aus der Lohnberechnung neu erstellt; von Hand erfasste oder migrierte Zeilen werden ersetzt.',
     'salary_slip_unposted_draft_deleted' => 'Verbuchung rückgängig gemacht; der Buchungsentwurf wurde gelöscht. Beim erneuten Verbuchen wird die Buchung aus der Lohnberechnung neu erstellt.',
 

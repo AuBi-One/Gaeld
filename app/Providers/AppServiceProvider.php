@@ -38,6 +38,7 @@ use App\Domains\Expenses\Services\TesseractOcrService;
 use App\Domains\Invoicing\Jobs\GenerateRecurringInvoicesJob;
 use App\Domains\Invoicing\Jobs\SendPaymentRemindersJob;
 use App\Domains\Invoicing\Models\Invoice;
+use App\Domains\Invoicing\Models\InvoicePayment;
 use App\Domains\Invoicing\Search\InvoiceSearchProvider;
 use App\Domains\Migration\Jobs\ProcessMigrationImport;
 use App\Domains\Organizations\Events\MemberRemoved;
@@ -102,7 +103,15 @@ class AppServiceProvider extends ServiceProvider
             ->registerColumn(SalarySlip::class, 'journal_entry_id', fn (SalarySlip $slip): JournalEntryReference => new JournalEntryReference(
                 __('app.journal_source_salary_slip', ['period' => $slip->month_label, 'employee' => $slip->employee_name]),
                 route('payroll.salarySlips.show', $slip),
-            ), ['employee' => fn ($query) => $query->withTrashed()]));
+            ), ['employee' => fn ($query) => $query->withTrashed()])
+            ->registerColumn(Invoice::class, 'journal_entry_id', fn (Invoice $invoice): JournalEntryReference => new JournalEntryReference(
+                __('app.journal_source_invoice', ['number' => $invoice->number]),
+                route('invoices.show', $invoice),
+            ))
+            ->registerColumn(InvoicePayment::class, 'journal_entry_id', fn (InvoicePayment $payment): JournalEntryReference => new JournalEntryReference(
+                __('app.journal_source_invoice_payment', ['number' => $payment->invoice->number ?? $payment->reference]),
+                $payment->invoice->trashed() ? null : route('invoices.show', $payment->invoice_id),
+            ), ['invoice' => fn ($query) => $query->withTrashed()]));
         $this->app->singleton(
             ReceiptOcrInterface::class,
             config('services.ocr.driver', 'tesseract') === 'tesseract'

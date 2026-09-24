@@ -15,9 +15,11 @@ use Illuminate\Database\Eloquent\Model;
  * journal, but not edited, deleted or reversed there: the owning feature
  * does that (owners call LedgerService directly, not the journal policy).
  *
- * Registered in core: salary slips. Features whose entries are always
- * posted (invoices, expenses, bank transactions, depreciation, VAT) are
- * already protected by the posted check and may register to show their link.
+ * Registered in core: salary slips, invoices and invoice payments (their
+ * posted entries are then reversed by cancelling the invoice, not with the
+ * journal's Reverse). Other features whose entries are always posted
+ * (expenses, bank transactions, depreciation, VAT) are protected by the
+ * posted check and may register to show their link.
  */
 final class JournalEntryReferences
 {

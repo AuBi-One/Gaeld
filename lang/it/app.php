@@ -2304,6 +2304,8 @@ return [
     'journal_entry_owned' => 'Creata da :source. Gestiscila da lì.',
     'journal_entry_source' => 'Origine',
     'journal_source_salary_slip' => 'Busta paga :period — :employee',
+    'journal_source_invoice' => 'Fattura :number',
+    'journal_source_invoice_payment' => 'Pagamento della fattura :number',
     'unpost_salary_slip_draft_confirm' => 'Annullare la registrazione di questa busta paga? La registrazione contabile è ancora una bozza: verrà eliminata. Registrando di nuovo la busta, la registrazione viene ricostruita dal calcolo della paga; le righe inserite o migrate a mano vengono sostituite.',
     'salary_slip_unposted_draft_deleted' => 'Registrazione della busta paga annullata; la bozza contabile è stata eliminata. Registrando di nuovo la busta, la registrazione viene ricostruita dal calcolo della paga.',
 
