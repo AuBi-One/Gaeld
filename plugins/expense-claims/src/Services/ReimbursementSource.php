@@ -81,6 +81,7 @@ final class ReimbursementSource implements ReimbursementSourceInterface
                 if ($updated !== 1) {
                     throw new \DomainException(__('expense-claims::ec.item_not_open', ['id' => $item['id']]));
                 }
+                Audit::log(Claim::withoutGlobalScopes()->whereKey($id)->get(), 'paid_with_salary', ['salary_slip_id' => $slip->id, 'date' => $paidOn]);
 
                 continue;
             }
@@ -94,17 +95,18 @@ final class ReimbursementSource implements ReimbursementSourceInterface
             if ($debt === null || Money::compare($item['amount'], $debt->load('repayments')->remaining()) > 0) {
                 throw new \DomainException(__('expense-claims::ec.item_not_open', ['id' => $item['id']]));
             }
-            $debt->repayments()->create(['date' => $paidOn, 'amount' => $item['amount'], 'via' => 'payroll', 'salary_slip_id' => $slip->id]);
+            $debt->repayments()->create(['organization_id' => $orgId, 'date' => $paidOn, 'amount' => $item['amount'], 'via' => 'payroll', 'salary_slip_id' => $slip->id]);
         }
     }
 
     public function release(SalarySlip $slip): void
     {
+        $released = Claim::withoutGlobalScopes()->where('salary_slip_id', $slip->id)->where('settled_via', 'payroll')->get();
         Claim::withoutGlobalScopes()
-            ->where('salary_slip_id', $slip->id)
-            ->where('settled_via', 'payroll')
+            ->whereIn('id', $released->modelKeys())
             ->update(['status' => Claim::STATUS_APPROVED, 'settled_via' => null, 'settled_on' => null, 'salary_slip_id' => null]);
-        DebtRepayment::query()->where('salary_slip_id', $slip->id)->delete();
+        Audit::log($released, 'released_from_salary', ['salary_slip_id' => $slip->id]);
+        DebtRepayment::withoutGlobalScopes()->where('organization_id', $slip->organization_id)->where('salary_slip_id', $slip->id)->delete();
     }
 
     private function person(string $organizationId, string $employeeId): ?Person

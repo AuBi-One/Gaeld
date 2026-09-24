@@ -76,6 +76,7 @@ final class Debts
                     'settled_on' => $date,
                     'debt_record_id' => $debt->id,
                 ]);
+                Audit::log($group, 'passed_to_debt', ['date' => $date, 'debt_record_id' => $debt->id, 'journal_entry_id' => $entryId]);
                 $records->push($debt);
             }
 
@@ -121,6 +122,7 @@ final class Debts
                 'settled_on' => null,
                 'debt_record_id' => null,
             ]);
+            Audit::log($claims, 'debt_cancelled', ['debt_record_id' => $debt->id]);
             $debt->delete();
         });
     }
@@ -152,7 +154,7 @@ final class Debts
                 ],
             ), $this->journal->draft($debt->journal_entry_id) !== null);
 
-            return $debt->repayments()->create(['date' => $date, 'amount' => $amount, 'via' => 'bank', 'journal_entry_id' => $entry->id]);
+            return $debt->repayments()->create(['organization_id' => $orgId, 'date' => $date, 'amount' => $amount, 'via' => 'bank', 'journal_entry_id' => $entry->id]);
         });
     }
 
@@ -178,7 +180,7 @@ final class Debts
      */
     private function debtLines(string $orgId, Collection $claims, string $debtAccount): array
     {
-        $moved = $claims->filter(fn (Claim $c): bool => $c->liability_account_code !== $debtAccount)->values();
+        $moved = $claims->filter(fn (Claim $c): bool => ! $c->isBooked() || $c->liability_account_code !== $debtAccount)->values();
 
         return $moved->isEmpty() ? [] : [
             ...$this->lines->costs($orgId, $moved, 'debit'),

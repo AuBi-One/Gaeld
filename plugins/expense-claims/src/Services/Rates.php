@@ -26,7 +26,11 @@ final class Rates
         }
 
         foreach (self::DEFAULTS as $rate) {
-            VehicleRate::withoutGlobalScopes()->create($rate + ['organization_id' => $organizationId]);
+            // Two first requests at once: the unique (organization, type, valid_from) keeps one row.
+            VehicleRate::withoutGlobalScopes()->firstOrCreate(
+                ['organization_id' => $organizationId, 'vehicle_type' => $rate['vehicle_type'], 'valid_from' => $rate['valid_from']],
+                $rate,
+            );
         }
     }
 

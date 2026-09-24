@@ -194,6 +194,7 @@ class ImportAirtableCommand extends Command
                     'total' => $p['total'],
                     // Without --book the ledger already holds the cost on the liability (booked before Gäld);
                     // with --book nothing is booked until the claim is paid or passed to debt (D37).
+                    // journal_entry_id stays null either way: Claim::isBooked() relies on it for source = airtable.
                     'liability_account_code' => $book ? null : $liability,
                     'source' => 'airtable',
                     'external_ref' => $p['record']['id'],

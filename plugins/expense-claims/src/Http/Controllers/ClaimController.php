@@ -314,6 +314,7 @@ class ClaimController extends PluginController
             'status' => $claim->status,
             'total' => (string) $claim->total,
             'liability_account_code' => $claim->liability_account_code,
+            'is_booked' => $claim->isBooked(),
             'settled_via' => $claim->settled_via,
             'settled_on' => $claim->settled_on?->toDateString(),
             'salary_slip_id' => $claim->salary_slip_id,

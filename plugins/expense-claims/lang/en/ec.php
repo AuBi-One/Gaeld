@@ -184,4 +184,7 @@ return [
     'closing_drafts_earlier' => ':count draft expense claim(s) of earlier years (CHF :amount) are not approved.',
     'dated_from' => 'Dated from',
     'booking_is_draft' => 'The booking of :ref is still a draft: post it in the journal first.',
+    'closing_entry_lost' => ':count approved expense claim(s) (CHF :amount) were booked once, but their entry was deleted in the journal: they count as not booked.',
+    'rate_exists' => 'A rate for this vehicle type already starts on that date.',
+    'entry_lost' => 'Booked once, but the entry was deleted in the journal: counts as not booked.',
 ];

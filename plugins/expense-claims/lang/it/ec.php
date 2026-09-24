@@ -184,4 +184,7 @@ return [
     'closing_drafts_earlier' => ':count nota/e spese in bozza di esercizi precedenti (CHF :amount) non sono approvate.',
     'dated_from' => 'Datate dal',
     'booking_is_draft' => 'La registrazione di :ref è ancora una bozza: registrala prima nel giornale.',
+    'closing_entry_lost' => ':count nota/e spese approvata/e (CHF :amount) erano registrate, ma la loro scrittura è stata eliminata nel giornale: contano come non registrate.',
+    'rate_exists' => 'Una tariffa per questo tipo di veicolo inizia già in quella data.',
+    'entry_lost' => 'Era registrata, ma la scrittura è stata eliminata nel giornale: conta come non registrata.',
 ];

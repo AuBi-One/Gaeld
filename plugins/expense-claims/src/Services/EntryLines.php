@@ -77,7 +77,7 @@ final class EntryLines
      */
     public function costs(string $organizationId, Collection $claims, string $side): array
     {
-        [$booked, $open] = $claims->partition(fn (Claim $c): bool => $c->liability_account_code !== null);
+        [$booked, $open] = $claims->partition(fn (Claim $c): bool => $c->isBooked());
 
         return [
             ...($open->isEmpty() ? [] : $this->expenses($organizationId, $open->values(), $side)),
@@ -92,8 +92,8 @@ final class EntryLines
      */
     public static function costSplits(Claim $claim): array
     {
-        if ($claim->liability_account_code !== null) {
-            return [['account_code' => $claim->liability_account_code, 'amount' => Money::normalize((string) $claim->total)]];
+        if ($claim->isBooked()) {
+            return [['account_code' => (string) $claim->liability_account_code, 'amount' => Money::normalize((string) $claim->total)]];
         }
 
         return array_values($claim->lines

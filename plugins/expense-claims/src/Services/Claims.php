@@ -98,6 +98,7 @@ final class Claims
                 'approved_by' => $approverId,
                 'approved_at' => now(),
             ]);
+            Audit::log($locked, 'approved', ['approved_by' => $approverId]);
 
             return $locked;
         });
@@ -118,7 +119,7 @@ final class Claims
                 Claim::withoutGlobalScopes()->where('journal_entry_id', $entryId)->orderBy('id')->lockForUpdate()->pluck('id');
             }
             $claim = $this->locked($claim, Claim::STATUS_APPROVED)->load(['lines', 'person']);
-            if ($claim->journal_entry_id === null && $claim->liability_account_code !== null) {
+            if ($claim->isBooked() && $claim->journal_entry_id === null) {
                 throw new \DomainException(__('expense-claims::ec.booked_before_gald'));
             }
             if ($claim->journal_entry_id !== null) {
@@ -164,6 +165,7 @@ final class Claims
                 Claim::withoutGlobalScopes()->whereIn('id', $group->modelKeys())->update([
                     'status' => Claim::STATUS_SETTLED, 'settled_via' => 'bank', 'settled_on' => $date, 'settlement_entry_id' => $entry->id,
                 ]);
+                Audit::log($group, 'paid', ['date' => $date, 'account_code' => $accountCode, 'journal_entry_id' => $entry->id]);
             }
 
             return $locked;
@@ -185,11 +187,13 @@ final class Claims
                 ->when($entryId !== null, fn ($q) => $q->where('settlement_entry_id', $entryId), fn ($q) => $q->whereKey($claim->id))
                 ->orderBy('id')->lockForUpdate()->pluck('id');
             $claim = $this->locked($claim, Claim::STATUS_SETTLED);
-            if ($claim->settled_via !== 'bank' || $claim->settlement_entry_id === null || $claim->settlement_entry_id !== $entryId) {
+            // A payment whose entry was deleted (id nulled by the foreign key) is cancelled without a counter-entry.
+            if ($claim->settled_via !== 'bank' || $claim->settlement_entry_id !== $entryId) {
                 throw new \DomainException(__('expense-claims::ec.not_paid_by_bank'));
             }
             $this->journal->undoWhole($entryId, "Annulation remboursement {$claim->reference()}");
             Claim::withoutGlobalScopes()->whereIn('id', $ids)->update(['status' => Claim::STATUS_APPROVED, 'settled_via' => null, 'settled_on' => null, 'settlement_entry_id' => null]);
+            Audit::log(Claim::withoutGlobalScopes()->whereIn('id', $ids)->get(), 'payment_cancelled', ['journal_entry_id' => $entryId]);
 
             return $ids->count();
         });

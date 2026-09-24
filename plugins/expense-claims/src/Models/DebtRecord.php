@@ -3,6 +3,7 @@
 namespace Plugins\ExpenseClaims\Models;
 
 use App\Support\Money;
+use App\Support\Traits\Auditable;
 use App\Support\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -25,7 +26,7 @@ use Illuminate\Support\Carbon;
  */
 class DebtRecord extends Model
 {
-    use BelongsToOrganization, HasUuids;
+    use Auditable, BelongsToOrganization, HasUuids;
 
     protected $table = 'ec_debt_records';
 

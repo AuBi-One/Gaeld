@@ -26,10 +26,10 @@ final class ClosingCheck implements ClosingCheckInterface
             ->whereDate('date', '<=', $toDate)
             ->where(fn ($q) => $q->whereIn('status', [Claim::STATUS_DRAFT, Claim::STATUS_APPROVED])
                 ->orWhere(fn ($q) => $q->whereDate('date', '>=', $fromDate)->whereDate('settled_on', '>', $toDate)))
-            ->get(['status', 'date', 'total', 'liability_account_code', 'settled_via', 'settled_on']);
+            ->get(['status', 'date', 'total', 'liability_account_code', 'journal_entry_id', 'source', 'settled_via', 'settled_on']);
         $inYear = $claims->filter(fn (Claim $c): bool => $c->date->toDateString() >= $fromDate);
         $earlier = $claims->filter(fn (Claim $c): bool => $c->date->toDateString() < $fromDate);
-        $booked = fn (Claim $c): bool => $c->liability_account_code !== null;
+        $booked = fn (Claim $c): bool => $c->isBooked();
         $approved = $inYear->where('status', Claim::STATUS_APPROVED);
 
         // Links filter Expense balances to exactly the claims counted (from/to).
@@ -40,6 +40,9 @@ final class ClosingCheck implements ClosingCheckInterface
             ...$this->finding('drafts', $inYear->where('status', Claim::STATUS_DRAFT), 'closing_drafts', '/expense-balances?status=draft'.$year, true),
             ...$this->finding('unpaid', $approved->reject($booked), 'closing_unpaid', '/expense-balances?status=approved'.$year, true),
             ...$this->finding('unpaid-booked', $approved->filter($booked), 'closing_unpaid_booked', '/expense-balances?status=approved'.$year),
+            // Booked once, but the entry is gone (deleted in the journal): counted as unbooked above; say why.
+            ...$this->finding('entry-lost', $approved
+                ->filter(fn (Claim $c): bool => $c->liability_account_code !== null && ! $c->isBooked()), 'closing_entry_lost', '/expense-balances?status=approved'.$year),
             // Paid or in debt after the year end: no list shows them, so no link.
             ...$this->finding('settled-later', $inYear->whereIn('status', [Claim::STATUS_SETTLED, Claim::STATUS_DEBT])
                 ->reject($booked)->reject(fn (Claim $c): bool => $c->settled_via === 'migrated'), 'closing_settled_later', null),

@@ -188,7 +188,8 @@ function lineLabel(line) {
         <Card>
           <CardHeader><CardTitle>{{ t('ec_entries') }}</CardTitle></CardHeader>
           <CardContent class="space-y-2 text-sm">
-            <p v-if="claim.liability_account_code" class="text-[hsl(var(--muted-foreground))]">{{ t('ec_booked_to') }} {{ claim.liability_account_code }}</p>
+            <p v-if="claim.is_booked" class="text-[hsl(var(--muted-foreground))]">{{ t('ec_booked_to') }} {{ claim.liability_account_code }}</p>
+            <p v-else-if="claim.liability_account_code" class="text-[hsl(var(--destructive))]">{{ t('ec_entry_lost') }}</p>
             <Link
               v-for="entry in entries"
               :key="entry.id"

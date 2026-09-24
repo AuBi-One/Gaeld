@@ -276,7 +276,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
     {
         $owner = $this->person(owner: true, employee: false);
         $claim = $this->claim($owner, '2025-06-01', [['type' => 'meal', 'amount' => '40.00']]);
-        $claim->forceFill(['liability_account_code' => '2260'])->save(); // cost booked before (old rule / migration)
+        $claim->forceFill(['liability_account_code' => '2260', 'source' => 'airtable'])->save(); // cost booked before Gäld (migration without --book)
         $before = JournalEntry::count();
 
         $debt = $this->convert($owner, '2025-12-31');
@@ -302,7 +302,7 @@ class ExpenseClaimsTest extends ExpenseClaimsTestCase
         $late = $this->claim($person, '2025-12-15', [['type' => 'meal', 'amount' => '15.00']]);
         app(Claims::class)->pay($late, '2026-01-20');
         $legacy = $this->claim($person, '2025-11-15', [['type' => 'meal', 'amount' => '7.00']]);
-        $legacy->forceFill(['liability_account_code' => '2210'])->save();
+        $legacy->forceFill(['liability_account_code' => '2210', 'source' => 'airtable'])->save(); // booked before Gäld
         $this->claim($person, '2024-03-01', [['type' => 'meal', 'amount' => '3.00']], approve: false);
 
         $findings = app(ClosingCheck::class)->check($this->org->id, '2025-01-01', '2025-12-31');

@@ -184,4 +184,7 @@ return [
     'closing_drafts_earlier' => ':count note(s) de frais en brouillon d\'exercices antérieurs (CHF :amount) ne sont pas approuvées.',
     'dated_from' => 'Datées depuis le',
     'booking_is_draft' => 'L\'écriture de :ref est encore un brouillon : comptabilisez-la d\'abord dans le journal.',
+    'closing_entry_lost' => ':count note(s) de frais approuvée(s) (CHF :amount) avaient été comptabilisées, mais leur écriture a été supprimée dans le journal : elles comptent comme non comptabilisées.',
+    'rate_exists' => 'Un taux pour ce type de véhicule commence déjà à cette date.',
+    'entry_lost' => 'Comptabilisée, mais l\'écriture a été supprimée dans le journal : compte comme non comptabilisée.',
 ];

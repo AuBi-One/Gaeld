@@ -57,11 +57,12 @@ class SettingsController extends PluginController
         $this->authorizeWrite();
         $data = $request->validate([
             'vehicle_type' => ['required', 'string', 'max:20'],
-            'valid_from' => ['required', 'date_format:Y-m-d'],
+            'valid_from' => ['required', 'date_format:Y-m-d', Rule::unique('ec_vehicle_rates', 'valid_from')
+                ->where('organization_id', $this->orgId())->where('vehicle_type', (string) $request->input('vehicle_type'))],
             'valid_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:valid_from'],
             'rate_per_km' => ['required', 'numeric', 'gt:0', 'max:10'],
             'note' => ['nullable', 'string', 'max:255'],
-        ]);
+        ], ['valid_from.unique' => __('expense-claims::ec.rate_exists')]);
         VehicleRate::query()->create($data + ['organization_id' => $this->orgId()]);
 
         return back()->with('success', __('expense-claims::ec.saved'));

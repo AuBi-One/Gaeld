@@ -3,6 +3,7 @@
 namespace Plugins\ExpenseClaims\Models;
 
 use App\Domains\Users\Models\User;
+use App\Support\Traits\Auditable;
 use App\Support\Traits\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -40,7 +41,7 @@ use Illuminate\Support\Carbon;
  */
 class Claim extends Model
 {
-    use BelongsToOrganization, HasUuids;
+    use Auditable, BelongsToOrganization, HasUuids;
 
     protected $table = 'ec_claims';
 
@@ -93,5 +94,17 @@ class Claim extends Model
     public function isDraft(): bool
     {
         return $this->status === self::STATUS_DRAFT;
+    }
+
+    /**
+     * The cost of this claim is already in the ledger on its liability account:
+     * approved before D37 with its own entry, or migrated from a ledger that
+     * held it (no entry of its own; the importer never sets journal_entry_id
+     * on an Airtable claim). A claim whose entry was deleted (the foreign key
+     * nulls the id) is not booked any more.
+     */
+    public function isBooked(): bool
+    {
+        return $this->liability_account_code !== null && ($this->journal_entry_id !== null || $this->source === 'airtable');
     }
 }

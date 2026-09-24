@@ -204,10 +204,10 @@ class GroupedEntriesTest extends ExpenseClaimsTestCase
     #[Test]
     public function a_claim_booked_before_the_change_is_paid_from_its_liability(): void
     {
-        // Approved before D37 (or migrated without --book): its cost is already on 2210.
+        // Migrated without --book: its cost is already on 2210 in the migrated ledger.
         $claim = $this->draft($this->anna, '2026-03-10', '10.00');
         app(Claims::class)->approve($claim);
-        $claim->forceFill(['liability_account_code' => '2210'])->save();
+        $claim->forceFill(['liability_account_code' => '2210', 'source' => 'airtable'])->save();
 
         try {
             app(Claims::class)->unapprove($claim->fresh());

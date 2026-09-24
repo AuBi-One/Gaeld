@@ -184,4 +184,7 @@ return [
     'closing_drafts_earlier' => ':count Spesenabrechnung(en) früherer Jahre im Entwurf (CHF :amount) sind nicht genehmigt.',
     'dated_from' => 'Datiert ab',
     'booking_is_draft' => 'Die Buchung von :ref ist noch ein Entwurf: zuerst im Journal verbuchen.',
+    'closing_entry_lost' => ':count genehmigte Spesenabrechnung(en) (CHF :amount) waren gebucht, aber ihre Buchung wurde im Journal gelöscht: sie gelten als nicht gebucht.',
+    'rate_exists' => 'Für diesen Fahrzeugtyp beginnt an diesem Datum bereits ein Ansatz.',
+    'entry_lost' => 'War gebucht, aber die Buchung wurde im Journal gelöscht: gilt als nicht gebucht.',
 ];
