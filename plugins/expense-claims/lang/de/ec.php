@@ -183,4 +183,5 @@ return [
     'closing_settled_later' => ':count Spesenabrechnung(en) des Jahres (CHF :amount) wurden nach dem Abschlussdatum bezahlt oder in eine Schuld überführt: ihre Kosten sind im Folgejahr gebucht. Um sie im Jahr zu behalten, die Zahlung oder die Schuld stornieren und dann per Abschlussdatum in eine Schuld überführen.',
     'closing_drafts_earlier' => ':count Spesenabrechnung(en) früherer Jahre im Entwurf (CHF :amount) sind nicht genehmigt.',
     'dated_from' => 'Datiert ab',
+    'booking_is_draft' => 'Die Buchung von :ref ist noch ein Entwurf: zuerst im Journal verbuchen.',
 ];

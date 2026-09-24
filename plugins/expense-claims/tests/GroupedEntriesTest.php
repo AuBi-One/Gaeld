@@ -10,7 +10,10 @@ use App\Domains\Accounting\Enums\AccountType;
 use App\Domains\Accounting\Models\Account;
 use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Models\TransactionLine;
+use App\Domains\Accounting\Services\JournalEntryReferences;
+use App\Domains\Accounting\Services\LedgerService;
 use App\Domains\Payroll\Actions\GeneratePayrollRunAction;
+use App\Domains\Payroll\Contracts\ReimbursementSourceInterface;
 use App\Domains\Payroll\Models\SalarySlip;
 use Illuminate\Support\Collection;
 use PHPUnit\Framework\Attributes\Test;
@@ -183,6 +186,14 @@ class GroupedEntriesTest extends ExpenseClaimsTestCase
         $claim = $this->draft($this->anna, '2026-04-02', '10.00');
         app(Claims::class)->approve($claim);
 
+        $adjustment = [['employee_id' => $this->employee->id, 'reimbursement_item_ids' => ['claim:'.$claim->id]]];
+        try {
+            app(GeneratePayrollRunAction::class)->preview($this->org->id, 3, 2026, [], $adjustment);
+            $this->fail('The preview accepted a claim dated after the month.');
+        } catch (\DomainException) {
+        }
+        $this->assertSame(0, SalarySlip::count());
+
         $this->expectException(\DomainException::class);
         app(GeneratePayrollRunAction::class)->execute($this->org->id, 3, 2026, true, [], [[
             'employee_id' => $this->employee->id,
@@ -226,6 +237,52 @@ class GroupedEntriesTest extends ExpenseClaimsTestCase
 
         $this->assertSame(Claim::STATUS_DRAFT, $claim->fresh()->status);
         $this->assertSame([], array_filter($this->balances(), fn (string $b): bool => $b !== '0.00'));
+    }
+
+    #[Test]
+    public function repaying_a_draft_debt_writes_a_draft_repayment_owned_by_the_repayment_and_not_through_payroll(): void
+    {
+        $claim = $this->draft($this->owner, '2025-05-10', '30.00');
+        app(Claims::class)->approve($claim);
+        $debt = app(Debts::class)->convert([$claim], '2025-12-31', null, true)->sole();
+
+        $repayment = app(Debts::class)->repay($debt, '2026-02-01', '10.00');
+
+        $entry = JournalEntry::findOrFail($repayment->journal_entry_id);
+        $this->assertFalse($entry->is_posted); // same state as the debt's draft entry
+        $this->assertSame([], array_filter($this->balances(), fn (string $b): bool => $b !== '0.00')); // nothing posted yet
+        $owner = app(JournalEntryReferences::class)->forMany([$entry->id])[$entry->id] ?? null;
+        $this->assertNotNull($owner); // owned via ec_debt_repayments: locked in the journal
+
+        // A draft debt is not offered for repayment with a salary.
+        $this->assertSame([], app(ReimbursementSourceInterface::class)->openItems($this->org->id, (string) $this->employee->id));
+
+        // Repayments made after the debt entry is posted are posted (earlier draft ones stay drafts until posted in the journal).
+        app(LedgerService::class)->postDraft(JournalEntry::findOrFail($debt->journal_entry_id));
+        $second = app(Debts::class)->repay($debt->fresh(), '2026-03-01', '5.00');
+        $this->assertTrue(JournalEntry::findOrFail($second->journal_entry_id)->is_posted);
+    }
+
+    #[Test]
+    public function a_claim_whose_earlier_booking_is_a_draft_is_not_paid_until_it_is_posted(): void
+    {
+        $claim = $this->draft($this->anna, '2026-03-10', '10.00');
+        app(Claims::class)->approve($claim);
+        $entry = app(Journal::class)->book($this->org->id, new JournalEntryData('2026-03-10', 'EC-0001', 'Legacy approval', [
+            new JournalLineData(app(Accounts::class)->id($this->org->id, '6640'), '10.00', '0'),
+            new JournalLineData(app(Accounts::class)->id($this->org->id, '2210'), '0', '10.00'),
+        ]), true);
+        $claim->forceFill(['liability_account_code' => '2210', 'journal_entry_id' => $entry->id])->save();
+
+        $this->assertSame([], app(ReimbursementSourceInterface::class)->openItems($this->org->id, (string) $this->employee->id));
+        try {
+            app(Claims::class)->pay($claim->fresh(), '2026-03-31');
+            $this->fail('Paid against a draft booking.');
+        } catch (\DomainException $e) {
+            $this->assertStringContainsString('EC-0001', $e->getMessage());
+        }
+        $this->expectException(\DomainException::class);
+        app(Debts::class)->convert([$claim->fresh()], '2026-12-31');
     }
 
     #[Test]

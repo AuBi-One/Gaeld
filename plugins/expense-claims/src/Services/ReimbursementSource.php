@@ -20,7 +20,7 @@ use Plugins\ExpenseClaims\Models\Person;
  */
 final class ReimbursementSource implements ReimbursementSourceInterface
 {
-    public function __construct(private Accounts $accounts) {}
+    public function __construct(private Accounts $accounts, private Journal $journal) {}
 
     public function openItems(string $organizationId, string $employeeId): array
     {
@@ -127,6 +127,8 @@ final class ReimbursementSource implements ReimbursementSourceInterface
             ->with('lines')
             ->orderBy('date')
             ->get()
+            // A claim whose earlier booking is still a draft cannot be paid yet (its liability is not posted).
+            ->reject(fn (Claim $c): bool => $this->journal->draft($c->journal_entry_id) !== null)
             ->map(function (Claim $c): array {
                 // The cost is booked with the salary (D37): the expense account(s) of the
                 // lines, or the liability of a claim whose cost was booked earlier.
@@ -148,7 +150,8 @@ final class ReimbursementSource implements ReimbursementSourceInterface
             ->with('repayments')
             ->orderBy('date')
             ->get()
-            ->filter(fn (DebtRecord $d): bool => Money::isPositive($d->remaining()))
+            // A debt whose entry is still a draft is repaid from an account (as a draft), not with a salary.
+            ->filter(fn (DebtRecord $d): bool => Money::isPositive($d->remaining()) && $this->journal->draft($d->journal_entry_id) === null)
             ->map(fn (DebtRecord $d): array => [
                 'id' => 'debt:'.$d->id,
                 'date' => $d->date->toDateString(),

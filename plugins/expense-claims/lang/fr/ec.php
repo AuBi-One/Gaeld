@@ -183,4 +183,5 @@ return [
     'closing_settled_later' => ':count note(s) de frais de l\'exercice (CHF :amount) ont été payées ou passées en dette après la date de clôture : leur coût est comptabilisé l\'année suivante. Pour le garder dans l\'exercice, annulez le paiement ou la dette, puis passez-les en dette à la date de clôture.',
     'closing_drafts_earlier' => ':count note(s) de frais en brouillon d\'exercices antérieurs (CHF :amount) ne sont pas approuvées.',
     'dated_from' => 'Datées depuis le',
+    'booking_is_draft' => 'L\'écriture de :ref est encore un brouillon : comptabilisez-la d\'abord dans le journal.',
 ];

@@ -145,6 +145,7 @@ final class Claims
             if ($locked->contains(fn (Claim $c): bool => $c->date->toDateString() > $date)) {
                 throw new \DomainException(__('expense-claims::ec.claim_after_payment_date', ['date' => $date]));
             }
+            $this->refuseDraftBookings($locked);
             $orgId = (string) $locked->first()?->organization_id;
             $accountCode ??= Setting::forOrganization($orgId)->bank_account_code;
 
@@ -192,6 +193,21 @@ final class Claims
 
             return $ids->count();
         });
+    }
+
+    /**
+     * A claim booked earlier with an entry that is still a draft (e.g. a draft
+     * migration load) cannot be paid or passed to debt with a posted entry:
+     * the liability it debits is not posted yet.
+     *
+     * @param  Collection<int, Claim>  $claims
+     */
+    public function refuseDraftBookings(Collection $claims): void
+    {
+        $draft = $claims->first(fn (Claim $c): bool => $this->journal->draft($c->journal_entry_id) !== null);
+        if ($draft !== null) {
+            throw new \DomainException(__('expense-claims::ec.booking_is_draft', ['ref' => $draft->reference()]));
+        }
     }
 
     /**

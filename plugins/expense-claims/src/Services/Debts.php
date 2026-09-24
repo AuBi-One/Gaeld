@@ -43,6 +43,9 @@ final class Debts
             if ($locked->contains(fn (Claim $c): bool => $c->date->toDateString() > $date)) {
                 throw new \DomainException(__('expense-claims::ec.claim_after_debt_date', ['date' => $date]));
             }
+            if (! $draft) {
+                $this->claims->refuseDraftBookings($locked);
+            }
             $orgId = (string) $locked->first()?->organization_id;
             $settings = Setting::forOrganization($orgId);
 
@@ -122,7 +125,12 @@ final class Debts
         });
     }
 
-    /** Repay (part of) a debt record from a bank or cash account (default: the bank setting). */
+    /**
+     * Repay (part of) a debt record from a bank or cash account (default: the
+     * bank setting). While the debt's own entry is a draft (e.g. a draft
+     * migration load), the repayment entry is a draft too, so the debt
+     * account never shows a repayment without its debt.
+     */
     public function repay(DebtRecord $debt, string $date, string $amount, ?string $accountCode = null): DebtRepayment
     {
         $amount = Money::normalize($amount);
@@ -142,7 +150,7 @@ final class Debts
                     new JournalLineData($this->accounts->id($orgId, $debt->account_code), $amount, '0', "Dette du {$debt->date->toDateString()}"),
                     new JournalLineData($this->accounts->id($orgId, $accountCode), '0', $amount, (string) $debt->person?->name),
                 ],
-            ));
+            ), $this->journal->draft($debt->journal_entry_id) !== null);
 
             return $debt->repayments()->create(['date' => $date, 'amount' => $amount, 'via' => 'bank', 'journal_entry_id' => $entry->id]);
         });

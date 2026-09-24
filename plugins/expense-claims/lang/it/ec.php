@@ -183,4 +183,5 @@ return [
     'closing_settled_later' => ':count nota/e spese dell\'esercizio (CHF :amount) sono state pagate o passate a debito dopo la data di chiusura: il loro costo è registrato l\'anno successivo. Per tenerlo nell\'esercizio, annulla il pagamento o il debito, poi passale a debito alla data di chiusura.',
     'closing_drafts_earlier' => ':count nota/e spese in bozza di esercizi precedenti (CHF :amount) non sono approvate.',
     'dated_from' => 'Datate dal',
+    'booking_is_draft' => 'La registrazione di :ref è ancora una bozza: registrala prima nel giornale.',
 ];

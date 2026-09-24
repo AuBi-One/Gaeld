@@ -183,4 +183,5 @@ return [
     'closing_settled_later' => ':count expense claim(s) of the year (CHF :amount) were paid or passed to debt after the closing date: their cost is booked in the next year. To keep it in this year, cancel the payment or the debt record, then pass them to debt dated on the closing date.',
     'closing_drafts_earlier' => ':count draft expense claim(s) of earlier years (CHF :amount) are not approved.',
     'dated_from' => 'Dated from',
+    'booking_is_draft' => 'The booking of :ref is still a draft: post it in the journal first.',
 ];
