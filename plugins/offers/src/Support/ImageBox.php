@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Support\Pdf;
+namespace Plugins\Offers\Support;
 
 /**
  * Fits an image (e.g. the organisation logo) into a box, keeping its aspect

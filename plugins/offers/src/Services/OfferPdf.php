@@ -3,13 +3,13 @@
 namespace Plugins\Offers\Services;
 
 use App\Domains\Organizations\Models\Organization;
-use App\Support\Pdf\ImageBox;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Plugins\Offers\Models\Offer;
 use Plugins\Offers\Models\OfferSetting;
+use Plugins\Offers\Support\ImageBox;
 use Plugins\Offers\Support\Layout;
 
 /**

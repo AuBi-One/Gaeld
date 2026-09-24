@@ -3,9 +3,9 @@
 namespace Plugins\DocumentLayouts\Support;
 
 use App\Domains\Organizations\Models\Organization;
-use App\Support\Pdf\ImageBox;
 use Illuminate\Support\Facades\Storage;
 use Plugins\Offers\Models\OfferSetting;
+use Plugins\Offers\Support\ImageBox;
 
 /**
  * The sender block of the Word models: the organisation's name and address,

@@ -69,9 +69,10 @@ class InvoicePdfPolishTest extends TestCase
 
         $this->assertSame(1, preg_match('#BT ([\d.]+) ([\d.]+) Td \[\(Test GmbH\)\] TJ ET#', $page, $name), 'The sender name is printed');
         $this->assertLessThan($bottom, (float) $name[2] + 10, 'The sender name starts below the logo');
-        // The sender block starts at 30 mm as before for a wide logo, below the box for the others.
+        // The sender block starts LOGO_GAP below the logo, whatever its shape.
         $nameTopMm = (841.89 - (float) $name[2]) * 25.4 / 72;
-        $height >= $width ? $this->assertGreaterThan(39, $nameTopMm) : $this->assertEqualsWithDelta(34, $nameTopMm, 3);
+        $logoBottomMm = (841.89 - (float) $image[4]) * 25.4 / 72;
+        $this->assertEqualsWithDelta($logoBottomMm + InvoicePdfStyle::LOGO_GAP + 4, $nameTopMm, 1.5);
     }
 
     public function test_payment_terms_in_days_get_their_unit_and_free_text_is_kept(): void
