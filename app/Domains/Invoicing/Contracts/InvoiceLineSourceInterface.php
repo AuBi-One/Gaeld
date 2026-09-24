@@ -21,7 +21,8 @@ interface InvoiceLineSourceInterface
     /**
      * URL of a JSON endpoint called with `?customer_id=` that returns
      * `{title, empty, hide_complete_label?, groups: [{label, options: [{source_id, label, reference,
-     * complete?: bool, line: {type, description, quantity, unit_price, vat_rate_id}}]}]}`.
+     * complete?: bool, introduction?: string, line: {type, description, quantity, unit_price, vat_rate_id}}]}]}`
+     * (`introduction` prefills the invoice's introduction when it is still empty).
      * With `hide_complete_label`, the picker offers a checkbox (remembered per browser)
      * that hides the options marked `complete` (e.g. positions already invoiced in full).
      */

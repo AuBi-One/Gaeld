@@ -178,7 +178,10 @@ function formattedLineAmount(line) {
 // "Add line from …": the picked option prefills a line that keeps its source reference.
 const pickerSource = ref(null)
 
+const emit = defineEmits(['source-picked'])
+
 function addLineFromSource({ source, option }) {
+  emit('source-picked', option)
   lines.value.push({
     ...emptyLine('item'),
     ...option.line,

@@ -278,6 +278,7 @@ function onDueDateManualEdit() {
             :tax-treatment="form.tax_treatment"
             :line-sources="lineSources"
             :customer-id="form.customer_id"
+            @source-picked="option => { if (!form.introduction && option.introduction) form.introduction = option.introduction }"
           />
 
           <!-- Notes & Terms -->
