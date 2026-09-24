@@ -22,13 +22,19 @@ const props = defineProps({
   lines: { type: Array, default: () => [] },
 })
 
-// One row per offer item line; lines with something left are ticked by default.
+// One row per offer item line; lines with something left (a remainder with the position's sign)
+// are ticked by default. Any line may be ticked: an invoice may exceed the offer.
+const isOpen = line => Number(line.remaining) !== 0 && Math.sign(Number(line.remaining)) === Math.sign(Number(line.amount))
 const rows = reactive(props.lines.map(line => ({
   ...line,
-  selected: Number(line.remaining) !== 0,
-  invoice_amount: line.remaining,
+  selected: isOpen(line),
+  invoice_amount: isOpen(line) ? line.remaining : line.amount,
   invoice_description: line.invoice_text,
 })))
+// Soft warning: more than what remains of the position (or nothing remains)
+const exceeds = row => row.selected && Number(row.invoice_amount) !== 0
+  && Math.sign(Number(row.invoice_amount)) === Math.sign(Number(row.amount))
+  && Math.abs(Number(row.invoice_amount)) > Math.max(0, Number(row.remaining) * Math.sign(Number(row.amount))) + 1e-9
 
 const form = useForm({ lines: [] })
 const selectedTotal = computed(() => rows.filter(r => r.selected).reduce((sum, r) => sum + (Number(r.invoice_amount) || 0), 0))
@@ -69,7 +75,7 @@ function submit() {
             :class="['rounded-lg border border-[hsl(var(--border))] p-3', row.selected ? '' : 'opacity-60']"
           >
             <label class="flex items-start gap-3 text-sm">
-              <input :id="`of-inv-${i}-selected`" v-model="row.selected" type="checkbox" class="mt-1 h-4 w-4 accent-[hsl(var(--primary))]" :disabled="Number(row.remaining) === 0" />
+              <input :id="`of-inv-${i}-selected`" v-model="row.selected" type="checkbox" class="mt-1 h-4 w-4 accent-[hsl(var(--primary))]" />
               <span class="flex-1">
                 <span class="font-medium">{{ row.label ? `${row.label} ` : '' }}{{ row.description }}</span>
                 <span class="block text-xs text-[hsl(var(--muted-foreground))]">
@@ -84,6 +90,7 @@ function submit() {
               <FormTextarea v-model="row.invoice_description" :id="`of-inv-${i}-description`" :label="t('of_invoice_text')" :rows="2" :error="rowError(i, 'description')" required />
               <FormInput v-model="row.invoice_amount" :id="`of-inv-${i}-amount`" type="number" step="0.01" :label="t('of_amount_to_invoice')" :error="rowError(i, 'amount')" required />
             </div>
+            <p v-if="exceeds(row)" class="mt-2 text-xs text-amber-700 dark:text-amber-300">{{ t('of_amount_over_warning', { remaining: formatCurrency(row.remaining, offer.currency) }) }}</p>
           </div>
           <div class="flex justify-end border-t pt-3 text-sm font-semibold">
             <span class="mr-4">{{ t('of_selected_total') }}</span>

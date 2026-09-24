@@ -50,10 +50,10 @@ function saveTemplate() {
   templateForm.post(`/offers/${props.offer.id}/save-as-template`, { onSuccess: () => { templateOpen.value = false } })
 }
 
-const recipientLines = computed(() => {
-  const r = props.offer.recipient ?? {}
-  return [r.attention, r.email, r.address, [r.postal_code, r.city].filter(Boolean).join(' ')].filter(Boolean)
-})
+// Recipient: the company and its postal address left, the contact person right.
+const recipient = computed(() => props.offer.recipient ?? {})
+const addressLines = computed(() => [recipient.value.address, [recipient.value.postal_code, recipient.value.city].filter(Boolean).join(' ')].filter(Boolean))
+const overInvoiced = line => tracking.value && line.type === 'item' && Number(props.offer.balance[line.id]?.remaining ?? 0) * Number(line.amount) < 0
 // Invoiced / remaining columns once the offer is accepted or has invoices.
 const tracking = computed(() => props.offer.status === 'accepted' || props.offer.invoices.length > 0)
 const hasLiveInvoice = computed(() => props.offer.invoices.some(i => i.status !== 'cancelled'))
@@ -128,10 +128,17 @@ const qty = value => Number(value).toLocaleString('de-CH', { maximumFractionDigi
 
         <Card>
           <CardHeader><CardTitle>{{ t('of_recipient') }}</CardTitle></CardHeader>
-          <CardContent class="text-sm">
-            <Link v-if="offer.contact_uuid" :href="`/contacts/${offer.contact_uuid}`" class="font-medium text-[hsl(var(--primary))] hover:underline">{{ offer.recipient?.company }}</Link>
-            <p v-else class="font-medium">{{ offer.recipient?.company }}</p>
-            <p v-for="(line, i) in recipientLines" :key="i">{{ line }}</p>
+          <CardContent class="grid gap-4 text-sm sm:grid-cols-2">
+            <div>
+              <Link v-if="offer.contact_uuid" :href="`/contacts/${offer.contact_uuid}`" class="font-medium text-[hsl(var(--primary))] hover:underline">{{ recipient.company }}</Link>
+              <p v-else class="font-medium">{{ recipient.company }}</p>
+              <p v-for="(line, i) in addressLines" :key="i">{{ line }}</p>
+            </div>
+            <div v-if="recipient.attention || recipient.email || recipient.phone">
+              <p v-if="recipient.attention" class="font-medium">{{ recipient.attention }}</p>
+              <p v-if="recipient.email"><a :href="`mailto:${recipient.email}`" class="text-[hsl(var(--primary))] hover:underline">{{ recipient.email }}</a></p>
+              <p v-if="recipient.phone">{{ recipient.phone }}</p>
+            </div>
           </CardContent>
         </Card>
 
@@ -164,7 +171,10 @@ const qty = value => Number(value).toLocaleString('de-CH', { maximumFractionDigi
                     <td class="px-4 py-2 text-right font-mono align-top">{{ formatCurrency(line.amount, offer.currency) }}</td>
                     <template v-if="tracking">
                       <td class="px-4 py-2 text-right font-mono align-top">{{ formatCurrency(offer.balance[line.id]?.invoiced ?? 0, offer.currency) }}</td>
-                      <td class="px-4 py-2 text-right font-mono align-top">{{ formatCurrency(offer.balance[line.id]?.remaining ?? 0, offer.currency) }}</td>
+                      <td class="px-4 py-2 text-right font-mono align-top">
+                        {{ formatCurrency(offer.balance[line.id]?.remaining ?? 0, offer.currency) }}
+                        <Badge v-if="overInvoiced(line)" variant="warning" class="ml-1 font-sans">{{ t('of_over_invoiced') }}</Badge>
+                      </td>
                     </template>
                   </template>
                 </tr>
@@ -223,11 +233,13 @@ const qty = value => Number(value).toLocaleString('de-CH', { maximumFractionDigi
               <CardTitle>{{ t('of_document') }}</CardTitle>
               <p class="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{{ offer.has_document ? t('of_stored_document') : t('of_live_preview') }}</p>
             </div>
-            <Button as="a" :href="`/offers/${offer.id}/document?download=1`" variant="outline" size="sm"><Download class="mr-2 h-4 w-4" />{{ t('of_action_download') }}</Button>
+            <Button as="a" :href="`/offers/${offer.id}/document?download=1`" variant="outline" size="sm"><Download class="mr-2 h-4 w-4" />{{ t('of_action_download', { ext: offer.document_ext }) }}</Button>
           </div>
         </CardHeader>
         <CardContent>
-          <iframe :key="previewKey" :src="`/offers/${offer.id}/document`" class="h-[800px] w-full rounded border border-[hsl(var(--border))]" :title="offer.number" />
+          <!-- Only a PDF is shown inline; another stored file (e.g. a migrated .docx) is downloaded on request only -->
+          <iframe v-if="offer.document_ext === 'PDF'" :key="previewKey" :src="`/offers/${offer.id}/document`" class="h-[800px] w-full rounded border border-[hsl(var(--border))]" :title="offer.number" />
+          <p v-else class="text-sm text-[hsl(var(--muted-foreground))]">{{ t('of_document_not_previewable', { ext: offer.document_ext }) }}</p>
         </CardContent>
       </Card>
     </div>

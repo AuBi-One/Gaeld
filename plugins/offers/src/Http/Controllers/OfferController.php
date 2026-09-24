@@ -115,7 +115,8 @@ class OfferController extends PluginController
             'offer' => $this->present($offer) + [
                 'balance' => $balance,
                 'invoiced' => self::sum(array_column($balance, 'invoiced')),
-                'remaining' => self::sum(array_column($balance, 'remaining')),
+                // What is left over the open positions (over-invoiced ones do not reduce it)
+                'remaining' => self::sum(array_map(fn (array $b): string => Offers::isOpen($b) ? $b['remaining'] : '0.00', $balance)),
                 'invoices' => OfferInvoicing::invoices($offer)->map(fn (object $i): array => [
                     'id' => $i->id,
                     'number' => $i->number,
@@ -124,11 +125,13 @@ class OfferController extends PluginController
                     'total' => number_format((float) $i->total, 2, '.', ''),
                     'net_from_offer' => number_format((float) $i->net_from_offer, 2, '.', ''),
                 ])->values(),
-                'can_invoice' => $offer->status === Offer::STATUS_ACCEPTED && collect($balance)->contains(fn (array $b): bool => ! Money::isZero($b['remaining'])),
+                'can_invoice' => $offer->status === Offer::STATUS_ACCEPTED, // an invoice may exceed the offer
                 'contact_uuid' => $offer->contact?->uuid,
                 'supersedes' => $offer->supersedes?->only(['id', 'number']),
                 'superseded_by' => $offer->supersededBy?->only(['id', 'number']),
                 'has_document' => $offer->document_path !== null,
+                // The stored document's kind drives the preview (PDF only) and the download button
+                'document_ext' => strtoupper($this->documentExtension($offer)),
                 'expired' => $offer->isExpired(),
                 'sent_at' => $offer->sent_at?->toIso8601String(),
                 'decided_at' => $offer->decided_at?->toIso8601String(),
@@ -180,8 +183,8 @@ class OfferController extends PluginController
     }
 
     /**
-     * "Add line from offer" on the core invoice form: the positions left to invoice
-     * of the client's accepted offers (JSON for InvoiceLineSourcePicker.vue).
+     * "Add line from offer" on the core invoice form: the positions of the client's accepted
+     * offers with what was invoiced and what remains (JSON for InvoiceLineSourcePicker.vue).
      */
     public function lineSource(Request $request): JsonResponse
     {
@@ -200,18 +203,19 @@ class OfferController extends PluginController
                 continue; // VAT rate changed since the offer: invoiced from the offer page only (refused there)
             }
             $options = [];
-            // Positions with something left (same sign as offered: an over-invoiced one is not offered again).
-            $open = fn (OfferLine $l): bool => $l->isItem() && ! Money::isZero($balance[$l->id]['remaining'])
-                && Money::isNegative($balance[$l->id]['remaining']) === Money::isNegative((string) $l->amount);
-            foreach ($offer->lines->filter($open) as $line) {
+            // Every position, with what was invoiced and what remains; fully (or over-) invoiced
+            // ones are marked complete, which the picker can hide.
+            foreach ($offer->lines->filter(fn (OfferLine $l): bool => $l->isItem()) as $line) {
                 $b = $balance[$line->id];
                 $options[] = [
                     'source_id' => (string) $line->id,
                     'label' => __('offers::of.source_option', [
                         'text' => $this->offers->invoiceDescription($line),
                         'amount' => OfferPdf::money($b['amount']),
+                        'invoiced' => OfferPdf::money($b['invoiced']),
                         'remaining' => OfferPdf::money($b['remaining']),
                     ]),
+                    'complete' => ! Offers::isOpen($b),
                     'reference' => OfferLineSource::reference($offer->number, $line),
                     'line' => [
                         'type' => 'item',
@@ -228,6 +232,7 @@ class OfferController extends PluginController
         return response()->json([
             'title' => __('offers::of.add_line_from_offer'),
             'empty' => __('offers::of.source_empty'),
+            'hide_complete_label' => __('offers::of.hide_fully_invoiced'),
             'groups' => $groups,
         ]);
     }
@@ -279,11 +284,14 @@ class OfferController extends PluginController
         return redirect("/offer-templates/{$template->id}/edit")->with('success', __('offers::of.template_saved'));
     }
 
-    /** The stored document once sent (or migrated), otherwise the document drawn now. */
+    /**
+     * The stored document once sent (or migrated), otherwise the document drawn now.
+     * Only PDFs are shown inline; anything else (e.g. a migrated .docx) is always a download.
+     */
     public function document(Request $request, Offer $offer): HttpResponse
     {
         $this->authorizeView();
-        $disposition = $request->boolean('download') ? 'attachment' : 'inline';
+        $disposition = $request->boolean('download') || $this->documentExtension($offer) !== 'pdf' ? 'attachment' : 'inline';
 
         if ($offer->document_path !== null && Storage::disk('local')->exists($offer->document_path)) {
             $name = $offer->document_name ?? basename($offer->document_path);
@@ -295,6 +303,25 @@ class OfferController extends PluginController
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => $disposition.'; filename="'.$offer->number.'.pdf"',
         ]);
+    }
+
+    /**
+     * Extension of the stored document (lower case), `pdf` for the one drawn on demand
+     * (also when the stored file is missing: the document is then drawn again).
+     */
+    private function documentExtension(Offer $offer): string
+    {
+        if ($offer->document_path === null || ! Storage::disk('local')->exists($offer->document_path)) {
+            return 'pdf';
+        }
+        foreach ([$offer->document_name, $offer->document_path] as $name) {
+            $ext = strtolower(pathinfo((string) $name, PATHINFO_EXTENSION));
+            if ($ext !== '') {
+                return $ext;
+            }
+        }
+
+        return 'pdf';
     }
 
     /** @return array<string, mixed> */

@@ -336,9 +336,9 @@ class Offers
 
     /**
      * Create a draft invoice from chosen lines of an accepted offer. Each chosen line
-     * has a net amount (not zero, same sign as what remains, at most what remains) and
-     * an invoice text. A line invoiced whole at once keeps its quantity and unit price;
-     * otherwise it becomes 1 × amount.
+     * has a net amount (not zero, with the sign of the position; it may exceed what
+     * remains) and an invoice text. A line invoiced whole at once keeps its quantity and
+     * unit price; otherwise it becomes 1 × amount.
      *
      * @param  array<int, array{line_id: int|string, amount: string, description: string}>  $selection
      */
@@ -364,14 +364,14 @@ class Offers
             $net = '0.00';
             foreach (array_values($selection) as $i => $chosen) {
                 $line = $offer->lines->firstWhere('id', (int) $chosen['line_id']);
-                if ($line === null || ! $line->isItem() || isset($seen[$line->id])) {
+                if ($line === null || ! $line->isItem() || Money::isZero((string) $line->amount) || isset($seen[$line->id])) {
                     throw ValidationException::withMessages(["lines.{$i}.line_id" => __('offers::of.invoice_line_invalid')]);
                 }
+                // Not zero, and the sign of the offered position (a rebate stays a rebate). More than
+                // what remains is allowed: an invoice may exceed the offer (the offer then shows it as over-invoiced).
                 $amount = Money::round((string) $chosen['amount']);
-                $remaining = $balance[$line->id]['remaining'];
-                if (Money::isZero($amount) || Money::isNegative($amount) !== Money::isNegative($remaining)
-                    || Money::compare(Money::absoluteAmount($amount), Money::absoluteAmount($remaining)) > 0) {
-                    throw ValidationException::withMessages(["lines.{$i}.amount" => __('offers::of.invoice_amount_exceeds', ['remaining' => $remaining])]);
+                if (Money::isZero($amount) || Money::isNegative($amount) !== Money::isNegative((string) $line->amount)) {
+                    throw ValidationException::withMessages(["lines.{$i}.amount" => __('offers::of.invoice_amount_sign')]);
                 }
                 $whole = Money::isZero($balance[$line->id]['invoiced']) && Money::compare($amount, (string) $line->amount) === 0;
                 $lines[] = [
@@ -422,15 +422,27 @@ class Offers
     }
 
     /**
-     * Prefill of an invoice line for what remains of an offer line: the line as
-     * offered when nothing was invoiced yet, otherwise 1 × what remains.
+     * Whether something of the position is left to invoice: a remainder with the
+     * sign of the position (a fully or over-invoiced one has none).
+     *
+     * @param  array{amount: string, invoiced: string, remaining: string}  $balance
+     */
+    public static function isOpen(array $balance): bool
+    {
+        return ! Money::isZero($balance['amount']) && ! Money::isZero($balance['remaining'])
+            && Money::isNegative($balance['remaining']) === Money::isNegative($balance['amount']);
+    }
+
+    /**
+     * Prefill of an invoice line from an offer line: the line as offered when nothing
+     * was invoiced yet (or nothing is left), otherwise 1 × what remains.
      *
      * @param  array{amount: string, invoiced: string, remaining: string}  $balance
      * @return array{quantity: string, unit_price: string}
      */
     public static function prefill(OfferLine $line, array $balance): array
     {
-        return Money::isZero($balance['invoiced'])
+        return Money::isZero($balance['invoiced']) || ! self::isOpen($balance)
             ? ['quantity' => (string) $line->quantity, 'unit_price' => (string) $line->unit_price]
             : ['quantity' => '1', 'unit_price' => $balance['remaining']];
     }

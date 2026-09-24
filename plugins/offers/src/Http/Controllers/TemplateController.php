@@ -102,6 +102,9 @@ class TemplateController extends PluginController
     {
         DB::transaction(function () use ($data, $template): void {
             if (! empty($data['is_default'])) {
+                // Serialise concurrent default changes of the organisation (its row is the lock, so the
+                // first template of an organisation is covered too); a partial unique index enforces it.
+                DB::table('organizations')->where('id', $this->orgId())->lockForUpdate()->value('id');
                 OfferTemplate::query()->when($template->exists, fn ($q) => $q->whereKeyNot($template->id))->update(['is_default' => false]);
             }
             $template->fill([

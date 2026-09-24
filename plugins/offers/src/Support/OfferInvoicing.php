@@ -70,8 +70,9 @@ final class OfferInvoicing
 
     /**
      * Per offer, over its item lines and the invoices that still count (not deleted,
-     * not cancelled): net invoiced, net remaining and the number of lines not fully
-     * invoiced. One query; $offers is an (organisation-scoped) offer query.
+     * not cancelled): net invoiced, net remaining over the open lines and the number of open
+     * lines (a remainder with the position's sign; over-invoiced ones are not open).
+     * One query; $offers is an (organisation-scoped) offer query.
      *
      * @param  EloquentBuilder<Offer>  $offers
      * @return Collection<string, object{offer_id: string, invoiced: string, remaining: string, open_lines: int}>
@@ -89,7 +90,10 @@ final class OfferInvoicing
             ->whereIn('l.offer_id', (clone $offers)->select('of_offers.id'))
             ->where('l.type', OfferLine::TYPE_ITEM)
             ->groupBy('l.offer_id')
-            ->selectRaw('l.offer_id, COALESCE(SUM(inv.invoiced), 0) AS invoiced, SUM(l.amount - COALESCE(inv.invoiced, 0)) AS remaining, SUM(CASE WHEN l.amount <> COALESCE(inv.invoiced, 0) THEN 1 ELSE 0 END) AS open_lines')
+            // open = a remainder with the sign of the position; over-invoiced positions are not open and do not reduce the remaining
+            ->selectRaw('l.offer_id, COALESCE(SUM(inv.invoiced), 0) AS invoiced, '
+                .'SUM(CASE WHEN (l.amount > 0 AND COALESCE(inv.invoiced, 0) < l.amount) OR (l.amount < 0 AND COALESCE(inv.invoiced, 0) > l.amount) THEN l.amount - COALESCE(inv.invoiced, 0) ELSE 0 END) AS remaining, '
+                .'SUM(CASE WHEN (l.amount > 0 AND COALESCE(inv.invoiced, 0) < l.amount) OR (l.amount < 0 AND COALESCE(inv.invoiced, 0) > l.amount) THEN 1 ELSE 0 END) AS open_lines')
             ->get()
             ->keyBy('offer_id');
     }

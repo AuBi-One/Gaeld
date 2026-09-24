@@ -13,6 +13,8 @@ use App\Domains\Invoicing\Services\InvoiceNumberGenerator;
 use App\Domains\Organizations\Models\Organization;
 use App\Domains\Users\Models\User;
 use App\Support\Plugins\PluginNavigation;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use PHPUnit\Framework\Attributes\Test;
@@ -276,8 +278,7 @@ class OffersTest extends OffersTestCase
         $this->assertSame('2.00', (string) $invoice->lines[0]->quantity); // whole line: quantity and unit price kept
         $this->assertStringContainsString('OF-2026-001', (string) $invoice->notes);
 
-        // nothing left: a second invoice of the same lines is refused, reopen too
-        $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => $this->whole($offer)])->assertSessionHasErrors('lines.0.amount');
+        // nothing left: reopen is refused (an invoice counts); invoicing again stays possible
         $this->actAsOrg()->post("/offers/{$offer->id}/reopen")->assertSessionHasErrors('status');
         $this->actAsOrg()->get('/offers')->assertInertia(fn ($page) => $page->where('offers.data.0.invoicing', 'full')->where('stats.to_invoice.count', 0));
         $this->assertSame(1, Invoice::query()->count());
@@ -307,12 +308,11 @@ class OffersTest extends OffersTestCase
         $this->actAsOrg()->get('/offers')->assertInertia(fn ($page) => $page->where('offers.data.0.invoicing', 'partial')
             ->where('stats.to_invoice.count', 1)->where('stats.to_invoice.total', '649.99'));
 
-        // more than what remains, zero, wrong sign, a line of another offer, the same line twice: refused
+        // zero, wrong sign, a line of another offer, the same line twice: refused
         $otherLine = $this->offer()->lines()->where('type', 'item')->firstOrFail();
         foreach ([
-            'lines.0.amount' => [['line_id' => $atelier->id, 'amount' => '600.01', 'description' => 'x']],
-            'lines.0.amount ' => [['line_id' => $atelier->id, 'amount' => '0', 'description' => 'x']],
-            'lines.0.amount  ' => [['line_id' => $atelier->id, 'amount' => '-10', 'description' => 'x']],
+            'lines.0.amount' => [['line_id' => $atelier->id, 'amount' => '0', 'description' => 'x']],
+            'lines.0.amount ' => [['line_id' => $atelier->id, 'amount' => '-10', 'description' => 'x']],
             'lines.0.line_id' => [['line_id' => $otherLine->id, 'amount' => '10', 'description' => 'x']],
             'lines.1.line_id' => [['line_id' => $rapport->id, 'amount' => '10', 'description' => 'x'], ['line_id' => $rapport->id, 'amount' => '10', 'description' => 'x']],
         ] as $key => $lines) {
@@ -326,7 +326,14 @@ class OffersTest extends OffersTestCase
             ['line_id' => $rapport->id, 'amount' => '49.99', 'description' => '2 Rapport'],
         ]])->assertSessionHasNoErrors();
         $this->assertSame(2, Invoice::query()->count());
-        $this->actAsOrg()->get("/offers/{$offer->id}")->assertInertia(fn ($page) => $page->where('offer.remaining', '0.00')->where('offer.can_invoice', false));
+        $this->actAsOrg()->get("/offers/{$offer->id}")->assertInertia(fn ($page) => $page->where('offer.remaining', '0.00')->where('offer.can_invoice', true));
+
+        // an invoice may exceed the offer: the position is then over-invoiced, the offer counts as invoiced
+        $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => [['line_id' => $atelier->id, 'amount' => '250', 'description' => 'Extra']]])->assertSessionHasNoErrors();
+        $this->assertSame('-250.00', app(Offers::class)->balance($offer->fresh('lines'))[$atelier->id]['remaining']);
+        $this->actAsOrg()->get("/offers/{$offer->id}")->assertInertia(fn ($page) => $page->where('offer.remaining', '0.00')->where('offer.invoiced', '2699.99'));
+        $this->actAsOrg()->get('/offers?status=accepted')->assertInertia(fn ($page) => $page->where('offers.data.0.invoicing', 'full')->where('stats.to_invoice.count', 0));
+        Invoice::query()->orderByDesc('number')->first()->delete(); // the extra invoice, newest number
 
         // a cancelled or deleted invoice no longer counts
         $first->update(['status' => InvoiceStatus::Cancelled]);
@@ -346,6 +353,9 @@ class OffersTest extends OffersTestCase
         // the picker lists the accepted offers of the client with what remains
         $this->actAsOrg()->get("/offers/line-source?customer_id={$this->contact->id}")->assertOk()
             ->assertJsonCount(1, 'groups')
+            ->assertJsonCount(2, 'groups.0.options')
+            ->assertJsonPath('hide_complete_label', __('offers::of.hide_fully_invoiced'))
+            ->assertJsonPath('groups.0.options.0.complete', false)
             ->assertJsonPath('groups.0.options.0.source_id', (string) $atelier->id)
             ->assertJsonPath('groups.0.options.0.line.description', 'OF-2026-001 · 1 Atelier (jour)')
             ->assertJsonPath('groups.0.options.0.line.quantity', '2.00')
@@ -383,6 +393,16 @@ class OffersTest extends OffersTestCase
         $this->actAsOrg()->put("/invoices/{$invoice->id}", ['number' => $invoice->number] + $payload('0', withLine: false))->assertSessionHasNoErrors();
         $this->assertSame('0.00', $balance()['invoiced']);
         $this->assertFalse($offer->fresh()->hasInvoice());
+
+        // fully invoiced positions stay listed, marked complete, prefilled as offered
+        $full = $this->actAsOrg()->post('/invoices', $payload('2400'));
+        $full->assertSessionHasNoErrors();
+        $this->actAsOrg()->get("/offers/line-source?customer_id={$this->contact->id}")
+            ->assertJsonCount(2, 'groups.0.options')
+            ->assertJsonPath('groups.0.options.0.complete', true)
+            ->assertJsonPath('groups.0.options.0.line.quantity', '2.00')
+            ->assertJsonPath('groups.0.options.1.complete', false);
+        Invoice::query()->findOrFail(basename((string) $full->headers->get('Location')))->delete();
 
         // a line of another organisation's offer cannot be referenced
         $foreign = Offer::query()->create([
@@ -463,6 +483,54 @@ class OffersTest extends OffersTestCase
     }
 
     #[Test]
+    public function a_stored_word_document_is_downloaded_only_on_request(): void
+    {
+        Storage::fake('local');
+        $offer = $this->offer();
+        Storage::disk('local')->put("offers/{$this->org->id}/{$offer->id}.docx", 'PK-not-really-a-docx');
+        $offer->update(['document_path' => "offers/{$this->org->id}/{$offer->id}.docx", 'document_name' => '2025012.docx', 'source' => 'airtable']);
+
+        $this->actAsOrg()->get("/offers/{$offer->id}")->assertInertia(fn ($page) => $page->where('offer.document_ext', 'DOCX')->where('offer.has_document', true));
+        $inline = $this->actAsOrg()->get("/offers/{$offer->id}/document");
+        $inline->assertOk();
+        $this->assertStringStartsWith('attachment', (string) $inline->headers->get('Content-Disposition'));
+        $this->assertStringContainsString('2025012.docx', (string) $inline->headers->get('Content-Disposition'));
+
+        // a stored PDF is shown inline
+        Storage::disk('local')->put("offers/{$this->org->id}/{$offer->id}.pdf", '%PDF-1.4 fake');
+        $offer->update(['document_path' => "offers/{$this->org->id}/{$offer->id}.pdf", 'document_name' => '2025017.pdf']);
+        $this->actAsOrg()->get("/offers/{$offer->id}")->assertInertia(fn ($page) => $page->where('offer.document_ext', 'PDF'));
+        $this->assertStringStartsWith('inline', (string) $this->actAsOrg()->get("/offers/{$offer->id}/document")->headers->get('Content-Disposition'));
+        $this->assertStringStartsWith('attachment', (string) $this->actAsOrg()->get("/offers/{$offer->id}/document?download=1")->headers->get('Content-Disposition'));
+
+        // a stored file that went missing: the document is drawn again, as a PDF
+        Storage::disk('local')->delete("offers/{$this->org->id}/{$offer->id}.pdf");
+        $this->actAsOrg()->get("/offers/{$offer->id}")->assertInertia(fn ($page) => $page->where('offer.document_ext', 'PDF'));
+        $this->assertStringStartsWith('%PDF', (string) $this->actAsOrg()->get("/offers/{$offer->id}/document")->getContent());
+    }
+
+    #[Test]
+    public function the_schema_keeps_one_default_template_per_organisation_and_the_creator_reference(): void
+    {
+        OfferTemplate::query()->create(['organization_id' => $this->org->id, 'name' => 'A', 'is_default' => true]);
+        try {
+            // a savepoint, so the refused insert does not abort the test transaction
+            DB::transaction(fn () => OfferTemplate::query()->create(['organization_id' => $this->org->id, 'name' => 'B', 'is_default' => true]));
+            $this->fail('two default templates were accepted');
+        } catch (UniqueConstraintViolationException) {
+            $this->addToAssertionCount(1);
+        }
+        // saving through the controller replaces the default instead
+        $this->actAsOrg()->post('/offer-templates', ['name' => 'C', 'is_default' => true, 'lines' => []])->assertRedirect('/offer-templates');
+        $this->assertSame(['C'], OfferTemplate::query()->where('is_default', true)->pluck('name')->all());
+
+        $offer = app(Offers::class)->saveDraft($this->org->id, $this->payload(), null, $this->user->id);
+        $this->assertSame($this->user->id, $offer->created_by);
+        $this->user->forceDelete();
+        $this->assertNull($offer->fresh()->created_by);
+    }
+
+    #[Test]
     public function rebates_are_invoiced_with_positive_lines_only(): void
     {
         $offer = app(Offers::class)->transition($this->sent(['lines' => [
@@ -490,7 +558,7 @@ class OffersTest extends OffersTestCase
             ['line_id' => $b->id, 'amount' => '100', 'description' => 'B'], ['line_id' => $r->id, 'amount' => '-50', 'description' => 'R'],
         ]])->assertSessionHasNoErrors();
         $this->actAsOrg()->post("/offers/{$offer->id}/invoice", ['lines' => [['line_id' => $r->id, 'amount' => '-50', 'description' => 'R']]])
-            ->assertSessionHasErrors('lines');
+            ->assertSessionHasErrors('lines'); // a rebate alone is still no invoice
         $this->assertSame('-50.00', app(Offers::class)->balance($offer->fresh('lines'))[$r->id]['remaining']);
     }
 
