@@ -1,0 +1,35 @@
+# Applies to builds of docker/production/Dockerfile only (BuildKit picks
+# <Dockerfile>.dockerignore over the repository's .dockerignore).
+.git
+.github
+.githooks
+.specify
+specs
+.vscode
+node_modules
+vendor
+coverage
+tests
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/framework/testing
+storage/app/*
+!storage/app/.gitkeep
+public/build
+public/hot
+public/docs
+.env
+.env.*
+*.log
+.phpunit.result.cache
+.phpunit.cache
+docker-compose*.yml
+deploy.php
+deploy.php.example
+# Dev-only and upstream-demo plugins never reach production
+plugins/aubi-migration
+plugins/example-plugin
+# macOS AppleDouble files copied by scp -r
+._*
