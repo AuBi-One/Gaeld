@@ -106,7 +106,7 @@ return [
     'person_not_of_contact' => 'Cette personne de contact n’appartient pas au client.',
     'vat_rate_not_found' => 'Taux de TVA introuvable.',
     'amount_too_large' => 'Montant trop élevé.',
-    'invoice_note' => 'Selon notre offre :number (:title).',
+    'invoice_note' => 'Selon notre offre :number.',
     'pdf_offer' => 'Offre',
     'pdf_date' => 'Date',
     'pdf_subject' => 'Concerne',

@@ -106,7 +106,7 @@ return [
     'person_not_of_contact' => 'Questa persona di contatto non appartiene al cliente.',
     'vat_rate_not_found' => 'Aliquota IVA non trovata.',
     'amount_too_large' => 'Importo troppo elevato.',
-    'invoice_note' => 'Secondo la nostra offerta :number (:title).',
+    'invoice_note' => 'Secondo la nostra offerta :number.',
     'pdf_offer' => 'Offerta',
     'pdf_date' => 'Data',
     'pdf_subject' => 'Oggetto',

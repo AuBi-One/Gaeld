@@ -277,6 +277,8 @@ class OffersTest extends OffersTestCase
         $this->assertSame('1 Atelier (jour)', $invoice->lines[0]->description);
         $this->assertSame('2.00', (string) $invoice->lines[0]->quantity); // whole line: quantity and unit price kept
         $this->assertStringContainsString('OF-2026-001', (string) $invoice->notes);
+        $this->assertStringNotContainsString('Analyse des processus', (string) $invoice->notes);
+        $this->assertSame('Analyse des processus', $invoice->introduction);
 
         // nothing left: reopen is refused (an invoice counts); invoicing again stays possible
         $this->actAsOrg()->post("/offers/{$offer->id}/reopen")->assertSessionHasErrors('status');
@@ -358,6 +360,7 @@ class OffersTest extends OffersTestCase
             ->assertJsonPath('groups.0.options.0.complete', false)
             ->assertJsonPath('groups.0.options.0.source_id', (string) $atelier->id)
             ->assertJsonPath('groups.0.options.0.line.description', 'OF-2026-001 · 1 Atelier (jour)')
+            ->assertJsonPath('groups.0.options.0.introduction', 'Analyse des processus')
             ->assertJsonPath('groups.0.options.0.line.quantity', '2.00')
             ->assertJsonPath('groups.0.options.0.line.unit_price', '1200.00')
             ->assertJsonPath('groups.0.options.0.line.vat_rate_id', (string) $this->vat->id);

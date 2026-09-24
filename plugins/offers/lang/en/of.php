@@ -107,7 +107,7 @@ return [
     'person_not_of_contact' => 'This contact person does not belong to the client.',
     'vat_rate_not_found' => 'VAT rate not found.',
     'amount_too_large' => 'Amount too large.',
-    'invoice_note' => 'According to our offer :number (:title).',
+    'invoice_note' => 'According to our offer :number.',
     // PDF
     'pdf_offer' => 'Offer',
     'pdf_date' => 'Date',

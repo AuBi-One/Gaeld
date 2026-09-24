@@ -403,7 +403,7 @@ class Offers
                 'due_date' => $today->copy()->addDays($organization->default_payment_terms_days ?? 30)->toDateString(),
                 'currency' => $offer->currency,
                 'introduction' => $offer->title,
-                'notes' => trans('offers::of.invoice_note', ['number' => $offer->number, 'title' => $offer->title], $offer->language),
+                'notes' => trans('offers::of.invoice_note', ['number' => $offer->number], $offer->language),
                 'lines' => $lines,
             ]));
 

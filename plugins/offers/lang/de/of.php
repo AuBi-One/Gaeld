@@ -106,7 +106,7 @@ return [
     'person_not_of_contact' => 'Diese Kontaktperson gehört nicht zum Kunden.',
     'vat_rate_not_found' => 'MWST-Satz nicht gefunden.',
     'amount_too_large' => 'Betrag zu hoch.',
-    'invoice_note' => 'Gemäss unserer Offerte :number (:title).',
+    'invoice_note' => 'Gemäss unserer Offerte :number.',
     'pdf_offer' => 'Offerte',
     'pdf_date' => 'Datum',
     'pdf_subject' => 'Betreff',

@@ -217,6 +217,8 @@ class OfferController extends PluginController
                     ]),
                     'complete' => ! Offers::isOpen($b),
                     'reference' => OfferLineSource::reference($offer->number, $line),
+                    // Prefills the invoice introduction when it is still empty (the offer's subject)
+                    'introduction' => $offer->title,
                     'line' => [
                         'type' => 'item',
                         'description' => $offer->number.' · '.$this->offers->invoiceDescription($line),
