@@ -156,4 +156,6 @@ return [
     'pdf_vat_label' => 'VAT',
     'pdf_total_incl_vat' => 'Total incl. VAT',
     'default_closing' => "Services not mentioned in this offer are invoiced separately.\nValidity: until {valid_until}\nDelivery time: to be agreed\n\nWe remain at your disposal for any further information.\nThank you.",
+    'remaining_to_invoice' => 'Remaining to invoice',
+    'all_offers_of_contact' => 'All offers of this client',
 ];

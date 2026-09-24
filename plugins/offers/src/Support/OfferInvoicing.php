@@ -4,10 +4,12 @@ namespace Plugins\Offers\Support;
 
 use App\Domains\Invoicing\Enums\InvoiceStatus;
 use App\Domains\Invoicing\Enums\InvoiceType;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Plugins\Offers\Models\Offer;
+use Plugins\Offers\Models\OfferLine;
 
 /**
  * What was invoiced from offers, read from the core invoice lines that carry
@@ -64,5 +66,31 @@ final class OfferInvoicing
             ->selectRaw('i.id, i.number, i.status, i.issue_date, i.total, SUM(il.amount) AS net_from_offer')
             ->orderBy('i.issue_date')->orderBy('i.number')
             ->get();
+    }
+
+    /**
+     * Per offer, over its item lines and the invoices that still count (not deleted,
+     * not cancelled): net invoiced, net remaining and the number of lines not fully
+     * invoiced. One query; $offers is an (organisation-scoped) offer query.
+     *
+     * @param  EloquentBuilder<Offer>  $offers
+     * @return Collection<string, object{offer_id: string, invoiced: string, remaining: string, open_lines: int}>
+     */
+    public static function perOffer(EloquentBuilder $offers): Collection
+    {
+        $perLine = self::lines()
+            ->whereIn('l.offer_id', (clone $offers)->select('of_offers.id'))
+            ->groupBy('l.id')
+            ->selectRaw('l.id AS offer_line_id, SUM(il.amount) AS invoiced');
+
+        /** @var Collection<string, object{offer_id: string, invoiced: string, remaining: string, open_lines: int}> */
+        return DB::table('of_offer_lines as l')
+            ->leftJoinSub($perLine, 'inv', 'inv.offer_line_id', '=', 'l.id')
+            ->whereIn('l.offer_id', (clone $offers)->select('of_offers.id'))
+            ->where('l.type', OfferLine::TYPE_ITEM)
+            ->groupBy('l.offer_id')
+            ->selectRaw('l.offer_id, COALESCE(SUM(inv.invoiced), 0) AS invoiced, SUM(l.amount - COALESCE(inv.invoiced, 0)) AS remaining, SUM(CASE WHEN l.amount <> COALESCE(inv.invoiced, 0) THEN 1 ELSE 0 END) AS open_lines')
+            ->get()
+            ->keyBy('offer_id');
     }
 }

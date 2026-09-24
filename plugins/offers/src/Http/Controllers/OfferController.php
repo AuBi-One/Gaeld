@@ -7,12 +7,9 @@ use App\Domains\Contacts\Models\Contact;
 use App\Domains\Contacts\Models\ContactPerson;
 use App\Domains\Organizations\Models\Organization;
 use App\Support\Money;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Response;
@@ -51,7 +48,7 @@ class OfferController extends PluginController
             ->orderByDesc('number')
             ->paginate(25)
             ->withQueryString();
-        $invoicing = $this->invoicing(Offer::query()->whereKey($offers->getCollection()->pluck('id')->all()));
+        $invoicing = OfferInvoicing::perOffer(Offer::query()->whereKey($offers->getCollection()->pluck('id')->all()));
         $offers->through(fn (Offer $o): array => [
             'id' => $o->id,
             'number' => $o->number,
@@ -69,7 +66,7 @@ class OfferController extends PluginController
         $open = Offer::query()->where('status', Offer::STATUS_SENT)
             ->where(fn ($q) => $q->whereNull('valid_until')->orWhere('valid_until', '>=', $today));
         // Accepted offers with at least one line left to invoice (net remaining).
-        $left = $this->invoicing(Offer::query()->where('status', Offer::STATUS_ACCEPTED))
+        $left = OfferInvoicing::perOffer(Offer::query()->where('status', Offer::STATUS_ACCEPTED))
             ->filter(fn (object $row): bool => (int) $row->open_lines > 0);
 
         return $this->page('Offers/Index', [
@@ -389,32 +386,6 @@ class OfferController extends PluginController
                 'amount' => (string) $l->amount,
             ])->values(),
         ];
-    }
-
-    /**
-     * Per offer, over its item lines and the invoices that still count (not deleted,
-     * not cancelled): net invoiced, net remaining and the number of lines not fully
-     * invoiced. One query; $offers is an (organisation-scoped) offer query.
-     *
-     * @param  Builder<Offer>  $offers
-     * @return Collection<string, object{offer_id: string, invoiced: string, remaining: string, open_lines: int}>
-     */
-    private function invoicing(Builder $offers): Collection
-    {
-        $perLine = OfferInvoicing::lines()
-            ->whereIn('l.offer_id', (clone $offers)->select('of_offers.id'))
-            ->groupBy('l.id')
-            ->selectRaw('l.id AS offer_line_id, SUM(il.amount) AS invoiced');
-
-        /** @var Collection<string, object{offer_id: string, invoiced: string, remaining: string, open_lines: int}> */
-        return DB::table('of_offer_lines as l')
-            ->leftJoinSub($perLine, 'inv', 'inv.offer_line_id', '=', 'l.id')
-            ->whereIn('l.offer_id', (clone $offers)->select('of_offers.id'))
-            ->where('l.type', OfferLine::TYPE_ITEM)
-            ->groupBy('l.offer_id')
-            ->selectRaw('l.offer_id, COALESCE(SUM(inv.invoiced), 0) AS invoiced, SUM(l.amount - COALESCE(inv.invoiced, 0)) AS remaining, SUM(CASE WHEN l.amount <> COALESCE(inv.invoiced, 0) THEN 1 ELSE 0 END) AS open_lines')
-            ->get()
-            ->keyBy('offer_id');
     }
 
     /** @param  array<int|string, string>  $amounts */

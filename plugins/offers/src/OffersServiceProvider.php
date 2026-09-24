@@ -2,9 +2,11 @@
 
 namespace Plugins\Offers;
 
+use App\Domains\Contacts\Services\ContactPanels;
 use App\Domains\Invoicing\Services\InvoiceLineSources;
 use App\Support\Plugins\PluginNavigation;
 use Illuminate\Support\ServiceProvider;
+use Plugins\Offers\Services\OfferContactPanel;
 use Plugins\Offers\Services\OfferLineSource;
 
 class OffersServiceProvider extends ServiceProvider
@@ -28,5 +30,8 @@ class OffersServiceProvider extends ServiceProvider
 
         // "Add line from offer" on the invoice form, and the link back from invoice lines.
         $this->app->make(InvoiceLineSources::class)->register(new OfferLineSource);
+
+        // "Offers" section on the contact page.
+        $this->app->make(ContactPanels::class)->register('offers', new OfferContactPanel);
     }
 }

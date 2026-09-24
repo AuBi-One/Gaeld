@@ -154,4 +154,6 @@ return [
     'pdf_vat_label' => 'MWST',
     'pdf_total_incl_vat' => 'Total inkl. MWST',
     'default_closing' => "Nicht in dieser Offerte aufgeführte Leistungen werden separat verrechnet.\nGültigkeit: bis {valid_until}\nLieferfrist: nach Vereinbarung\n\nFür weitere Auskünfte stehen wir Ihnen gerne zur Verfügung.\nBesten Dank.",
+    'remaining_to_invoice' => 'Noch zu verrechnen',
+    'all_offers_of_contact' => 'Alle Offerten dieses Kunden',
 ];

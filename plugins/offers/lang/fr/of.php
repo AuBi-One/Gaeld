@@ -154,4 +154,6 @@ return [
     'pdf_vat_label' => 'TVA',
     'pdf_total_incl_vat' => 'Total TVA incluse',
     'default_closing' => "Les prestations qui ne sont pas mentionnées dans cette offre sont facturées séparément.\nValidité : jusqu’au {valid_until}\nDélai de livraison : à convenir\n\nNous restons à votre disposition pour tous compléments d’informations.\nAvec nos remerciements.",
+    'remaining_to_invoice' => 'Reste à facturer',
+    'all_offers_of_contact' => 'Toutes les offres de ce client',
 ];

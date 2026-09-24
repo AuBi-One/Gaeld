@@ -18,6 +18,7 @@ use Illuminate\Validation\ValidationException;
 use PHPUnit\Framework\Attributes\Test;
 use Plugins\Offers\Models\Offer;
 use Plugins\Offers\Models\OfferTemplate;
+use Plugins\Offers\Services\OfferContactPanel;
 use Plugins\Offers\Services\OfferPdf;
 use Plugins\Offers\Services\Offers;
 use Plugins\Offers\Support\Layout;
@@ -413,6 +414,52 @@ class OffersTest extends OffersTestCase
         $sources = Invoice::query()->sole()->lines()->orderBy('sort_order')->get(['source_type', 'source_id'])->toArray();
         $ids = $offer->lines()->where('type', 'item')->orderBy('sort')->pluck('id')->map(fn ($id): string => (string) $id)->all();
         $this->assertSame([['source_type' => 'offer_line', 'source_id' => $ids[0]], ['source_type' => 'offer_line', 'source_id' => $ids[1]]], $sources);
+    }
+
+    #[Test]
+    public function the_contact_page_lists_the_contacts_offers_with_what_remains(): void
+    {
+        $accepted = app(Offers::class)->transition($this->sent(), 'accept');
+        $atelier = $accepted->lines()->where('label', '1')->sole();
+        $this->actAsOrg()->post("/offers/{$accepted->id}/invoice", ['lines' => [
+            ['line_id' => $atelier->id, 'amount' => '1800', 'description' => 'Acompte'],
+        ]])->assertSessionHasNoErrors();
+        $draft = $this->offer(['title' => 'Brouillon']);
+        $other = Contact::factory()->create(['organization_id' => $this->org->id]);
+        $this->offer(['contact_id' => $other->id, 'contact_person_id' => null]);
+
+        $this->actAsOrg()->get("/contacts/{$this->contact->uuid}")->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('panels', 1)
+                ->where('panels.0.key', 'offers')
+                ->has('panels.0.rows', 2)
+                ->where('panels.0.action.href', "/offers?contact={$this->contact->id}")
+                ->where('panels.0.rows.0.cells.number', $draft->number)
+                ->where('panels.0.rows.0.cells.remaining', null)
+                ->where('panels.0.rows.1.cells.number', $accepted->number)
+                ->where('panels.0.rows.1.cells.date', '2026-03-02')
+                ->where('panels.0.rows.1.cells.total', '2648.44')
+                ->where('panels.0.rows.1.cells.remaining', '649.99')
+                ->where('panels.0.rows.1.currency', 'CHF')
+                ->where('panels.0.rows.1.href', "/offers/{$accepted->id}"));
+
+        // an expired offer shows as expired; offers of another organisation never appear
+        $this->sent(['offer_date' => '2020-01-01', 'valid_until' => '2020-01-31']);
+        Offer::query()->create([
+            'organization_id' => Organization::factory()->create()->id, 'number' => 'X-9', 'contact_id' => $this->contact->id,
+            'title' => 'Foreign', 'offer_date' => '2026-05-01', 'status' => Offer::STATUS_SENT,
+        ]);
+        $this->actAsOrg()->get("/contacts/{$this->contact->uuid}")
+            ->assertInertia(fn ($page) => $page->has('panels.0.rows', 3)->where('panels.0.rows.2.cells.status', __('offers::of.status_expired')));
+
+        // no panel for a user who may not see offers
+        $employee = User::factory()->create(['onboarding_completed_at' => now()]);
+        $this->org->users()->attach($employee->id, ['role' => 'employee']);
+        $this->assignOrganizationRole($employee, $this->org, 'employee');
+        $this->assertFalse($employee->hasPermissionTo('invoicing.view'));
+        $panel = (new OfferContactPanel);
+        $this->actingAs($employee);
+        $this->assertNull($panel($this->contact));
     }
 
     #[Test]
