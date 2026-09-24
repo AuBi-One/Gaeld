@@ -71,8 +71,8 @@ class Employee extends Model
     protected function casts(): array
     {
         return [
-            'entry_date' => 'date',
-            'exit_date' => 'date',
+            'entry_date' => 'date:Y-m-d',
+            'exit_date' => 'date:Y-m-d',
             'gross_salary' => 'decimal:2',
             'is_active' => 'boolean',
             'is_source_tax_subject' => 'boolean',

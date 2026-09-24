@@ -120,7 +120,7 @@ class PayrollCrudHttpTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('Payroll/Employees/Show')
                 ->has('employee')
-                ->where('employee.entry_date', $employee->entry_date->toJSON())
+                ->where('employee.entry_date', $employee->entry_date->toDateString())
             );
     }
 

@@ -87,11 +87,11 @@ class LettrageTest extends TestCase
             ->where('account.code', '1020')
             ->has('openItems', 2)
             // Verify journal entry relationship is loaded with date & reference
-            ->where('openItems.0.journal_entry.date', '2026-02-15T00:00:00.000000Z')
+            ->where('openItems.0.journal_entry.date', '2026-02-15')
             ->where('openItems.0.journal_entry.reference', 'INV-001')
             ->where('openItems.0.debit', '1000.00')
             ->where('openItems.0.description', 'Payment received')
-            ->where('openItems.1.journal_entry.date', '2026-03-01T00:00:00.000000Z')
+            ->where('openItems.1.journal_entry.date', '2026-03-01')
             ->where('openItems.1.journal_entry.reference', 'EXP-042')
             ->where('openItems.1.credit', '500.00')
             ->where('openItems.1.description', 'Bank withdrawal')

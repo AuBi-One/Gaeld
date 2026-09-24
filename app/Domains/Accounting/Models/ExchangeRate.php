@@ -25,7 +25,7 @@ class ExchangeRate extends Model
     {
         return [
             'rate' => 'decimal:8',
-            'date' => 'date',
+            'date' => 'date:Y-m-d',
         ];
     }
 

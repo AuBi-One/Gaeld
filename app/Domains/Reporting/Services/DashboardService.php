@@ -139,7 +139,7 @@ class DashboardService
             ->map(function (JournalEntry $entry) {
                 return [
                     'id' => $entry->id,
-                    'date' => $entry->date,
+                    'date' => $entry->date->toDateString(),
                     'description' => $entry->description,
                     'reference' => $entry->reference,
                     'amount' => (string) $entry->lines->sum('debit'),

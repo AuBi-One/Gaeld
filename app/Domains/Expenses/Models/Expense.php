@@ -83,7 +83,7 @@ class Expense extends Model
     protected function casts(): array
     {
         return [
-            'date' => 'date',
+            'date' => 'date:Y-m-d',
             'amount' => 'decimal:2',
             'vat_amount' => 'decimal:2',
             'status' => ExpenseStatus::class,

@@ -52,8 +52,8 @@ class RecurringInvoice extends Model
     {
         return [
             'frequency' => RecurrenceFrequency::class,
-            'next_issue_date' => 'date',
-            'end_date' => 'date',
+            'next_issue_date' => 'date:Y-m-d',
+            'end_date' => 'date:Y-m-d',
             'template_data' => 'array',
             'is_active' => 'boolean',
         ];

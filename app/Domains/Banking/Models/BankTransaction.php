@@ -80,7 +80,7 @@ class BankTransaction extends Model
     protected function casts(): array
     {
         return [
-            'date' => 'date',
+            'date' => 'date:Y-m-d',
             'amount' => 'decimal:2',
             'type' => BankTransactionType::class,
             'is_reconciled' => 'boolean',

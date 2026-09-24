@@ -58,10 +58,10 @@ class JournalEntry extends Model
     protected function casts(): array
     {
         return [
-            'date' => 'date',
+            'date' => 'date:Y-m-d',
             'is_posted' => 'boolean',
-            'vat_period_start' => 'date',
-            'vat_period_end' => 'date',
+            'vat_period_start' => 'date:Y-m-d',
+            'vat_period_end' => 'date:Y-m-d',
             'vat_period_locked_at' => 'datetime',
             'archived_at' => 'datetime',
         ];

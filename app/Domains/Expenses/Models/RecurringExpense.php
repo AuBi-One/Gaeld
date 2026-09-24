@@ -70,8 +70,8 @@ class RecurringExpense extends Model
     {
         return [
             'frequency' => RecurrenceFrequency::class,
-            'next_due_date' => 'date',
-            'end_date' => 'date',
+            'next_due_date' => 'date:Y-m-d',
+            'end_date' => 'date:Y-m-d',
             'is_active' => 'boolean',
             'amount' => 'decimal:2',
             'vat_amount' => 'decimal:2',

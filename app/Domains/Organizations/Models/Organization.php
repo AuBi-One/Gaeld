@@ -98,7 +98,7 @@ class Organization extends Model
             'enabled_modules' => 'array',
             'pdf_layouts' => 'array',
             'business_type' => BusinessType::class,
-            'founded_at' => 'date',
+            'founded_at' => 'date:Y-m-d',
             'suspended_at' => 'datetime',
         ];
     }

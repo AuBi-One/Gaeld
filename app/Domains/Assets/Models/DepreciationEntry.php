@@ -39,7 +39,7 @@ class DepreciationEntry extends Model
     {
         return [
             'amount' => 'decimal:2',
-            'period_date' => 'date',
+            'period_date' => 'date:Y-m-d',
             'created_at' => 'datetime',
         ];
     }
