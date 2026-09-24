@@ -84,6 +84,7 @@ class BalanceController extends PluginController
                 'amount' => (string) $d->amount,
                 'remaining' => $d->remaining(),
                 'account_code' => $d->account_code,
+                'entry_lost' => $d->entry_expected && $d->journal_entry_id === null, // its entry was deleted in the journal
                 'notes' => $d->notes,
                 'repayments' => $d->repayments->map(fn (DebtRepayment $r): array => [
                     'date' => $r->date->toDateString(),

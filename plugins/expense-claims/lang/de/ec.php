@@ -187,4 +187,6 @@ return [
     'closing_entry_lost' => ':count genehmigte Spesenabrechnung(en) (CHF :amount) waren gebucht, aber ihre Buchung wurde im Journal gelöscht: sie gelten als nicht gebucht.',
     'rate_exists' => 'Für diesen Fahrzeugtyp beginnt an diesem Datum bereits ein Ansatz.',
     'entry_lost' => 'War gebucht, aber die Buchung wurde im Journal gelöscht: gilt als nicht gebucht.',
+    'closing_debt_entry_lost' => ':count Schuld(en) (CHF :amount) waren gebucht, aber ihre Buchung wurde im Journal gelöscht: Kosten und Schuld fehlen in der Buchhaltung. Ohne Rückzahlungen die Schuld stornieren und die Abrechnungen erneut überführen; sonst die Buchung im Journal neu erfassen.',
+    'debt_entry_lost' => 'War gebucht, aber die Buchung wurde im Journal gelöscht. Ohne Rückzahlungen: Schuld stornieren und die Abrechnungen erneut überführen; sonst die Buchung im Journal neu erfassen.',
 ];

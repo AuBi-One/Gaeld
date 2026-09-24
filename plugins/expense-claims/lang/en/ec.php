@@ -187,4 +187,6 @@ return [
     'closing_entry_lost' => ':count approved expense claim(s) (CHF :amount) were booked once, but their entry was deleted in the journal: they count as not booked.',
     'rate_exists' => 'A rate for this vehicle type already starts on that date.',
     'entry_lost' => 'Booked once, but the entry was deleted in the journal: counts as not booked.',
+    'closing_debt_entry_lost' => ':count debt record(s) (CHF :amount) were booked once, but their entry was deleted in the journal: cost and debt are missing from the ledger. Without repayments, cancel the record and pass the claims to debt again; otherwise re-book the entry in the journal.',
+    'debt_entry_lost' => 'Booked once, but the entry was deleted in the journal. Without repayments: cancel the record and pass the claims to debt again; otherwise re-book the entry in the journal.',
 ];

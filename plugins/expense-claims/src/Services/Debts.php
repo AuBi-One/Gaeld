@@ -68,6 +68,7 @@ final class Debts
                     'amount' => Money::sumAmounts($group->map(fn (Claim $c): array => ['amount' => (string) $c->total])->values()->all()),
                     'account_code' => $account,
                     'journal_entry_id' => $entryId,
+                    'entry_expected' => $lines !== [], // false: nothing to move (claims already on the debt account)
                     'notes' => $notes,
                 ]);
                 Claim::withoutGlobalScopes()->whereIn('id', $group->modelKeys())->update([

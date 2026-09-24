@@ -187,4 +187,6 @@ return [
     'closing_entry_lost' => ':count note(s) de frais approuvée(s) (CHF :amount) avaient été comptabilisées, mais leur écriture a été supprimée dans le journal : elles comptent comme non comptabilisées.',
     'rate_exists' => 'Un taux pour ce type de véhicule commence déjà à cette date.',
     'entry_lost' => 'Comptabilisée, mais l\'écriture a été supprimée dans le journal : compte comme non comptabilisée.',
+    'closing_debt_entry_lost' => ':count dette(s) (CHF :amount) avaient été comptabilisées, mais leur écriture a été supprimée dans le journal : le coût et la dette manquent dans la comptabilité. Sans remboursement, annulez la dette et repassez les notes en dette ; sinon, ressaisissez l\'écriture dans le journal.',
+    'debt_entry_lost' => 'Comptabilisée, mais l\'écriture a été supprimée dans le journal. Sans remboursement : annulez la dette et repassez les notes en dette ; sinon, ressaisissez l\'écriture dans le journal.',
 ];

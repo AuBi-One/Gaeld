@@ -239,6 +239,7 @@ function debtState(debt) {
                 <td class="whitespace-nowrap px-4 py-2">{{ formatDate(debt.date) }}</td>
                 <td class="px-4 py-2">
                   {{ debt.person }}
+                  <p v-if="debt.entry_lost" class="text-xs text-[hsl(var(--destructive))]">{{ t('ec_debt_entry_lost') }}</p>
                   <p v-for="(r, i) in debt.repayments" :key="i" class="text-xs text-[hsl(var(--muted-foreground))]">
                     {{ formatDate(r.date) }} · {{ t(`ec_via_${r.via}`) }} · {{ formatCurrency(r.amount) }}
                   </p>

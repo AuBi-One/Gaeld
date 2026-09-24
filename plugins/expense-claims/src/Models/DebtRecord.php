@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
  * @property string $amount
  * @property string $account_code
  * @property string|null $journal_entry_id
+ * @property bool $entry_expected
  * @property string|null $notes
  * @property-read Person|null $person
  * @property-read Collection<int, DebtRepayment> $repayments
@@ -30,11 +31,11 @@ class DebtRecord extends Model
 
     protected $table = 'ec_debt_records';
 
-    protected $fillable = ['organization_id', 'person_id', 'date', 'amount', 'account_code', 'journal_entry_id', 'notes'];
+    protected $fillable = ['organization_id', 'person_id', 'date', 'amount', 'account_code', 'journal_entry_id', 'entry_expected', 'notes'];
 
     protected function casts(): array
     {
-        return ['date' => 'date:Y-m-d'];
+        return ['date' => 'date:Y-m-d', 'entry_expected' => 'boolean'];
     }
 
     /** @return BelongsTo<Person, $this> */

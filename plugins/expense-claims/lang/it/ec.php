@@ -187,4 +187,6 @@ return [
     'closing_entry_lost' => ':count nota/e spese approvata/e (CHF :amount) erano registrate, ma la loro scrittura è stata eliminata nel giornale: contano come non registrate.',
     'rate_exists' => 'Una tariffa per questo tipo di veicolo inizia già in quella data.',
     'entry_lost' => 'Era registrata, ma la scrittura è stata eliminata nel giornale: conta come non registrata.',
+    'closing_debt_entry_lost' => ':count debito/i (CHF :amount) erano registrati, ma la loro scrittura è stata eliminata nel giornale: costo e debito mancano nella contabilità. Senza rimborsi, annulla il debito e passa di nuovo le note a debito; altrimenti registra di nuovo la scrittura nel giornale.',
+    'debt_entry_lost' => 'Era registrato, ma la scrittura è stata eliminata nel giornale. Senza rimborsi: annulla il debito e passa di nuovo le note a debito; altrimenti registra di nuovo la scrittura nel giornale.',
 ];

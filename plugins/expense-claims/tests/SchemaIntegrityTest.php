@@ -131,6 +131,29 @@ class SchemaIntegrityTest extends ExpenseClaimsTestCase
         $this->assertNull($repayment->fresh()->journal_entry_id);
         $this->assertSame('20.00', $debt->fresh()->load('repayments')->remaining());
         $this->assertSame(1, DebtRepayment::query()->count()); // scoped to the organisation
+
+        // N1: the lost debt entry is reported at closing with the whole missing amount (the
+        // repayment has its own entry); a record created without an entry by design is not.
+        $this->assertTrue($debt->fresh()->entry_expected);
+        $legacy = $this->claim('5.00');
+        $legacy->forceFill(['liability_account_code' => '2210', 'source' => 'airtable'])->save(); // already on the staff debt account
+        $noEntry = app(Debts::class)->convert([$legacy->fresh()], '2026-12-31')->sole();
+        $this->assertFalse($noEntry->entry_expected);
+        $this->assertNull($noEntry->journal_entry_id);
+
+        $findings = app(ClosingCheck::class)->check($this->org->id, '2026-01-01', '2026-12-31');
+        $this->assertSame(['expense-claims.debt-entry-lost'], array_column($findings, 'key'));
+        $this->assertStringContainsString('1 debt record', $findings[0]['message']);
+        $this->assertStringContainsString('30.00', $findings[0]['message']);
+        $this->assertFalse($findings[0]['blocking'] ?? false);
+
+        // Fully repaid later: the 2026 ledger still lacks the entry, so it stays reported.
+        app(Debts::class)->repay($debt->fresh(), '2027-02-01', '20.00');
+        $this->assertSame('0.00', $debt->fresh()->load('repayments')->remaining());
+        $this->assertSame(['expense-claims.debt-entry-lost'], array_column(app(ClosingCheck::class)->check($this->org->id, '2026-01-01', '2026-12-31'), 'key'));
+        $this->actAsOrg()->get('/expense-balances')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('debts', fn ($debts) => collect($debts)->pluck('entry_lost', 'id')->all() === [$debt->id => true, $noEntry->id => false]
+                || collect($debts)->pluck('entry_lost', 'id')->all() === [$noEntry->id => false, $debt->id => true]));
     }
 
     #[Test]
@@ -202,9 +225,10 @@ class SchemaIntegrityTest extends ExpenseClaimsTestCase
         $this->assertContains('ec_vehicle_rates_organization_id_vehicle_type_valid_from_unique', $indexes('ec_vehicle_rates'));
         $this->assertNotContains('ec_vehicle_rates_organization_id_vehicle_type_valid_from_index', $indexes('ec_vehicle_rates'));
 
-        // Each step is reversible on its own: back down to the create migration and up again.
-        $this->artisan('migrate:rollback', ['--path' => 'plugins/expense-claims/migrations', '--step' => 5, '--force' => true])->assertSuccessful();
+        // Each step is reversible on its own: the six review migrations (F1–N1) down and up again.
+        $this->artisan('migrate:rollback', ['--path' => 'plugins/expense-claims/migrations', '--step' => 6, '--force' => true])->assertSuccessful();
         $this->assertNotContains(['journal_entry_id'], $foreignKeys('ec_claims'));
+        $this->assertFalse(Schema::hasColumn('ec_debt_records', 'entry_expected'));
         $this->assertFalse(Schema::hasColumn('ec_debt_repayments', 'organization_id'));
         $this->assertContains('ec_vehicle_rates_organization_id_vehicle_type_valid_from_index', $indexes('ec_vehicle_rates'));
         $this->artisan('migrate', ['--path' => 'plugins/expense-claims/migrations', '--force' => true])->assertSuccessful();
