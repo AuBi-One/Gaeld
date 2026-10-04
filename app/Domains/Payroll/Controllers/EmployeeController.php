@@ -66,7 +66,9 @@ class EmployeeController extends Controller
         $this->authorize('view', $employee);
 
         $employee->makeVisible('ahv_number');
-        $employee->load(['salarySlips' => fn ($query) => $query->with('employee')]);
+        $employee->load(['salarySlips' => fn ($query) => $query->with('employee')
+            ->orderByDesc('period_year')
+            ->orderByDesc('period_month')]);
         $salarySlips = $employee->salarySlips;
 
         return Inertia::render('Payroll/Employees/Show', [

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Payroll;
 
 use App\Domains\Payroll\Models\Employee;
+use App\Domains\Payroll\Models\SalarySlip;
 use App\Domains\Users\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -163,6 +164,50 @@ class PayrollCrudHttpTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('Payroll/Employees/Edit')
                 ->where('employee.ahv_number', '756.9217.0769.85')
+            );
+    }
+
+    public function test_employee_show_orders_salary_slips_by_period_descending(): void
+    {
+        $employee = Employee::create([
+            'organization_id' => $this->org->id,
+            'first_name' => 'Anna',
+            'last_name' => 'Klein',
+            'entry_date' => '2026-01-01',
+            'gross_salary' => '7000.00',
+            'is_active' => true,
+        ]);
+
+        foreach ([
+            ['year' => 2025, 'month' => 11],
+            ['year' => 2026, 'month' => 2],
+            ['year' => 2025, 'month' => 12],
+            ['year' => 2026, 'month' => 1],
+        ] as $period) {
+            SalarySlip::create([
+                'organization_id' => $this->org->id,
+                'employee_id' => $employee->id,
+                'period_month' => $period['month'],
+                'period_year' => $period['year'],
+                'gross_salary' => '7000.00',
+                'net_salary' => '6000.00',
+                'deductions' => [],
+            ]);
+        }
+
+        $this->actingAs($this->user)
+            ->get("/payroll/employees/{$employee->id}")
+            ->assertStatus(200)
+            ->assertInertia(fn ($page) => $page
+                ->component('Payroll/Employees/Show')
+                ->where('salarySlips.0.period_year', 2026)
+                ->where('salarySlips.0.period_month', 2)
+                ->where('salarySlips.1.period_year', 2026)
+                ->where('salarySlips.1.period_month', 1)
+                ->where('salarySlips.2.period_year', 2025)
+                ->where('salarySlips.2.period_month', 12)
+                ->where('salarySlips.3.period_year', 2025)
+                ->where('salarySlips.3.period_month', 11)
             );
     }
 
