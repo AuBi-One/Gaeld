@@ -65,6 +65,7 @@ class EmployeeController extends Controller
     {
         $this->authorize('view', $employee);
 
+        $employee->makeVisible('ahv_number');
         $employee->load(['salarySlips' => fn ($query) => $query->with('employee')]);
         $salarySlips = $employee->salarySlips;
 
@@ -85,6 +86,8 @@ class EmployeeController extends Controller
     {
         $this->ensurePayrollWritable($employee->organization);
         $this->authorize('update', $employee);
+
+        $employee->makeVisible('ahv_number');
 
         return Inertia::render('Payroll/Employees/Edit', [
             'employee' => $employee,

@@ -124,6 +124,48 @@ class PayrollCrudHttpTest extends TestCase
             );
     }
 
+    public function test_employee_show_exposes_ahv_number_to_authorized_viewer(): void
+    {
+        $employee = Employee::create([
+            'organization_id' => $this->org->id,
+            'first_name' => 'Anna',
+            'last_name' => 'Klein',
+            'entry_date' => '2026-01-01',
+            'gross_salary' => '7000.00',
+            'is_active' => true,
+            'ahv_number' => '756.9217.0769.85',
+        ]);
+
+        $this->actingAs($this->user)
+            ->get("/payroll/employees/{$employee->id}")
+            ->assertStatus(200)
+            ->assertInertia(fn ($page) => $page
+                ->component('Payroll/Employees/Show')
+                ->where('employee.ahv_number', '756.9217.0769.85')
+            );
+    }
+
+    public function test_employee_edit_exposes_ahv_number_to_authorized_editor(): void
+    {
+        $employee = Employee::create([
+            'organization_id' => $this->org->id,
+            'first_name' => 'Anna',
+            'last_name' => 'Klein',
+            'entry_date' => '2026-01-01',
+            'gross_salary' => '7000.00',
+            'is_active' => true,
+            'ahv_number' => '756.9217.0769.85',
+        ]);
+
+        $this->actingAs($this->user)
+            ->get("/payroll/employees/{$employee->id}/edit")
+            ->assertStatus(200)
+            ->assertInertia(fn ($page) => $page
+                ->component('Payroll/Employees/Edit')
+                ->where('employee.ahv_number', '756.9217.0769.85')
+            );
+    }
+
     public function test_employee_update_changes_fields(): void
     {
         $employee = Employee::create([

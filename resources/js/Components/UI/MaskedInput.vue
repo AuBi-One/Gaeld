@@ -1,6 +1,6 @@
 <script>
 const MASKS = {
-  iban: { mask: '@@## #### #### #### #### #', eager: true },
+  iban: { mask: '@@** **** **** **** **** *', eager: true },
   phone: { mask: '+## ## ### ## ##' },
   postal: { mask: '####' },
 }
@@ -52,7 +52,7 @@ const maskaOptions = MASKS[props.mask]
         'flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:opacity-50 sm:h-9',
         error && 'border-[hsl(var(--destructive))]'
       )"
-      @maska="$emit('update:modelValue', $event.detail.unmasked)"
+      @maska="$emit('update:modelValue', mask === 'iban' ? $event.detail.masked : $event.detail.unmasked)"
     >
     <p v-if="error" :id="id + '-error'" role="alert" class="text-xs text-[hsl(var(--destructive))]">{{ error }}</p>
   </div>
