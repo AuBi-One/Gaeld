@@ -2,6 +2,8 @@
 import { cn } from '@/lib/utils'
 import { computed, ref } from 'vue'
 
+defineOptions({ inheritAttrs: false })
+
 const props = defineProps({
   modelValue: [String, Number],
   label: String,
@@ -51,6 +53,7 @@ function togglePasswordVisibility() {
     </label>
     <div class="relative">
       <input
+        v-bind="$attrs"
         :id="id"
         :type="effectiveType"
         :value="modelValue"
