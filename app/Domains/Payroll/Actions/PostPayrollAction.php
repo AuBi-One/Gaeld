@@ -10,7 +10,9 @@ use App\Domains\Accounting\Services\LedgerService;
 use App\Domains\Payroll\Contracts\ReimbursementSourceInterface;
 use App\Domains\Payroll\Contracts\SourceTaxServiceInterface;
 use App\Domains\Payroll\Models\SalarySlip;
+use App\Domains\Payroll\Queries\DeductionRateSetQuery;
 use App\Domains\Payroll\Services\NullReimbursementSource;
+use App\Domains\Payroll\Services\SwissDeductionService;
 use App\Support\Money;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +22,32 @@ use Illuminate\Support\Facades\DB;
  */
 class PostPayrollAction
 {
+    /**
+     * Deduction-code prefix => fixed account, used when a code has no
+     * explicit account mapping on its deduction rate line (none configured,
+     * or the employee has no code / no set covers this period and the
+     * built-in defaults were used, which carry no account at all). Keeps
+     * pre-existing organisations posting exactly where they always did.
+     */
+    private const LEGACY_ACCOUNT_BY_PREFIX = [
+        'avs_' => AccountCode::AVS_PAYABLE,
+        'aanp_' => AccountCode::AVS_PAYABLE,
+        'ac_' => AccountCode::AC_PAYABLE,
+        'lpp_' => AccountCode::LPP_PAYABLE,
+    ];
+
+    /**
+     * Keys {@see SwissDeductionService::calculateDeductions()} and the
+     * calculator add to a slip's `deductions` that are not themselves a
+     * per-line deduction amount, so the account-mapping loop below must
+     * skip them.
+     */
+    private const NON_RATE_DEDUCTION_KEYS = [
+        'total_employee', 'total_employer', 'net_salary', 'base_salary',
+        'thirteenth_salary', 'unpaid_leave_days', 'unpaid_leave_amount',
+        'reimbursement_amount', 'source_tax',
+    ];
+
     public function __construct(
         private LedgerService $ledger,
         private LedgerQueryService $ledgerQuery,
@@ -42,27 +70,7 @@ class PostPayrollAction
         $salaryAccount = $this->ledgerQuery->resolveAccount($orgId, AccountCode::SALARIES);
         $socialChargesAccount = $this->ledgerQuery->resolveAccount($orgId, AccountCode::SOCIAL_CHARGES_EMPLOYER);
         $bankAccount = $this->ledgerQuery->resolveAccount($orgId, AccountCode::BANK_CASH);
-        $avsAccount = $this->ledgerQuery->resolveAccount($orgId, AccountCode::AVS_PAYABLE);
-        $acAccount = $this->ledgerQuery->resolveAccount($orgId, AccountCode::AC_PAYABLE);
-        $lppAccount = $this->ledgerQuery->resolveAccount($orgId, AccountCode::LPP_PAYABLE);
 
-        // Calculate aggregated amounts for liability accounts
-        $avsTotal = Money::add(
-            $deductions['avs_employee'] ?? '0',
-            $deductions['avs_employer'] ?? '0',
-        );
-        // Include AANP in AVS payable if present
-        $avsTotal = Money::add($avsTotal, $deductions['aanp_employee'] ?? '0');
-
-        $acTotal = Money::add(
-            $deductions['ac_employee'] ?? '0',
-            $deductions['ac_employer'] ?? '0',
-        );
-
-        $lppTotal = Money::add(
-            $deductions['lpp_employee'] ?? '0',
-            $deductions['lpp_employer'] ?? '0',
-        );
         $sourceTaxAmount = Money::normalize((string) ($deductions['source_tax'] ?? $slip->source_tax_amount ?? '0.00'));
 
         $lines = [];
@@ -125,33 +133,19 @@ class PostPayrollAction
             );
         }
 
-        // Credit: AVS/AI/APG payable
-        if (Money::isPositive($avsTotal)) {
+        // Credit: every deduction line, grouped by the account its rate is
+        // mapped to in Payroll > Charges sociales (falling back to the fixed
+        // AVS/AC/LPP accounts when a line has no mapping, so an organisation
+        // that never opened that screen posts exactly as before). Grouping
+        // by resolved account, not by code, keeps the entry balanced however
+        // many distinct deduction codes or accounts are involved: every code
+        // present in `deductions` lands in exactly one credit line here.
+        foreach ($this->creditsByAccount($slip, $deductions) as $accountId => $credit) {
             $lines[] = new JournalLineData(
-                accountId: (string) $avsAccount->id,
+                accountId: (string) $accountId,
                 debit: '0',
-                credit: $avsTotal,
-                description: 'AVS/AI/APG contributions',
-            );
-        }
-
-        // Credit: AC payable
-        if (Money::isPositive($acTotal)) {
-            $lines[] = new JournalLineData(
-                accountId: (string) $acAccount->id,
-                debit: '0',
-                credit: $acTotal,
-                description: 'Unemployment insurance (AC)',
-            );
-        }
-
-        // Credit: LPP payable
-        if (Money::isPositive($lppTotal)) {
-            $lines[] = new JournalLineData(
-                accountId: (string) $lppAccount->id,
-                debit: '0',
-                credit: $lppTotal,
-                description: 'Pension fund (LPP)',
+                credit: $credit['amount'],
+                description: $credit['description'],
             );
         }
 
@@ -199,6 +193,92 @@ class PostPayrollAction
         $this->sendEmail->execute($postedSlip);
 
         return $postedSlip;
+    }
+
+    /**
+     * Every per-line deduction amount on the slip, grouped by the
+     * chart-of-accounts entry it should credit.
+     *
+     * @param  array<string, mixed>  $deductions
+     * @return array<int, array{amount: string, description: string}>
+     */
+    private function creditsByAccount(SalarySlip $slip, array $deductions): array
+    {
+        $employee = $slip->employee;
+        $orgId = $slip->organization_id;
+
+        $periodDate = Carbon::create($slip->period_year, $slip->period_month, 1)->toDateString();
+        $rateSet = DeductionRateSetQuery::resolve($orgId, $employee->deduction_rate_code, $periodDate);
+
+        /** @var array<string, int> $accountIdByCode */
+        $accountIdByCode = [];
+        /** @var array<string, string> $nameByCode */
+        $nameByCode = [];
+        if ($rateSet) {
+            foreach ($rateSet->rates as $rate) {
+                $nameByCode[$rate->code] = $rate->name;
+                if ($rate->account_id !== null) {
+                    $accountIdByCode[$rate->code] = $rate->account_id;
+                }
+            }
+        }
+        foreach (SwissDeductionService::defaults() as $default) {
+            $nameByCode[$default['code']] ??= $default['name'];
+        }
+
+        $credits = [];
+        foreach ($deductions as $code => $amount) {
+            if (in_array($code, self::NON_RATE_DEDUCTION_KEYS, true)) {
+                continue;
+            }
+
+            $amount = (string) $amount;
+            if (! Money::isPositive($amount)) {
+                continue;
+            }
+
+            $accountId = $accountIdByCode[$code] ?? $this->legacyAccountId($orgId, $code);
+            if ($accountId === null) {
+                throw new \DomainException(
+                    "No chart-of-accounts entry is mapped to the deduction \"{$code}\" (\"{$slip->employee->fullName()}\", "
+                    ."{$slip->period_month}/{$slip->period_year}). Set one for it in Payroll > Charges sociales before posting this slip.",
+                );
+            }
+
+            $name = $nameByCode[$code] ?? $code;
+            if (! isset($credits[$accountId])) {
+                $credits[$accountId] = ['amount' => Money::zero(), 'names' => []];
+            }
+            $credits[$accountId]['amount'] = Money::add($credits[$accountId]['amount'], $amount);
+            if (! in_array($name, $credits[$accountId]['names'], true)) {
+                $credits[$accountId]['names'][] = $name;
+            }
+        }
+
+        return array_map(
+            fn (array $credit): array => [
+                'amount' => $credit['amount'],
+                'description' => 'Social charges: '.implode(', ', $credit['names']),
+            ],
+            $credits,
+        );
+    }
+
+    /**
+     * The fixed AVS/AC/LPP account a deduction code posted to before any
+     * mapping existed, matched by its code prefix. Null for anything else
+     * (APGM, allocations familiales, a custom charge, ...), which then needs
+     * an explicit mapping.
+     */
+    private function legacyAccountId(string $organizationId, string $code): ?int
+    {
+        foreach (self::LEGACY_ACCOUNT_BY_PREFIX as $prefix => $accountCode) {
+            if (str_starts_with($code, $prefix)) {
+                return (int) $this->ledgerQuery->resolveAccount($organizationId, $accountCode)->id;
+            }
+        }
+
+        return null;
     }
 
     /**
