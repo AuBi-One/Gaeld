@@ -201,10 +201,8 @@ async function goToPreview() {
         ...employee,
         id: slip.employee_id,
         gross_salary: slip.gross_salary,
-        avs: deductions.avs_employee ?? '0.00',
-        ac: deductions.ac_employee ?? '0.00',
-        aanp: deductions.aanp_employee ?? '0.00',
-        lpp: deductions.lpp_employee ?? '0.00',
+        social_charges_employee: deductions.total_employee ?? '0.00',
+        social_charges_employer: deductions.total_employer ?? '0.00',
         base_salary: deductions.base_salary ?? slip.gross_salary,
         thirteenth_salary: deductions.thirteenth_salary ?? '0.00',
         unpaid_leave_amount: deductions.unpaid_leave_amount ?? '0.00',
@@ -449,10 +447,8 @@ async function postSlips() {
                 <th class="min-w-[8rem] whitespace-nowrap px-3 pb-2 text-right font-medium">{{ t('thirteenth_salary') }}</th>
                 <th class="min-w-[10rem] whitespace-nowrap px-3 pb-2 text-right font-medium">{{ t('unpaid_leave') }}</th>
                 <th class="min-w-[13rem] whitespace-nowrap px-3 pb-2 text-right font-medium">{{ t('expense_reimbursement') }}</th>
-                <th class="min-w-[6rem] whitespace-nowrap px-3 pb-2 text-right font-medium">AVS</th>
-                <th class="min-w-[6rem] whitespace-nowrap px-3 pb-2 text-right font-medium">AC</th>
-                <th class="min-w-[6rem] whitespace-nowrap px-3 pb-2 text-right font-medium">AANP</th>
-                <th class="min-w-[6rem] whitespace-nowrap px-3 pb-2 text-right font-medium">LPP</th>
+                <th class="min-w-[8rem] whitespace-nowrap px-3 pb-2 text-right font-medium">{{ t('employer_share') }}</th>
+                <th class="min-w-[8rem] whitespace-nowrap px-3 pb-2 text-right font-medium">{{ t('employee_share') }}</th>
                 <th v-if="withholdingTaxEnabled" class="min-w-[8rem] whitespace-nowrap px-3 pb-2 text-right font-medium">{{ t('withholding_tax') }}</th>
                 <th class="min-w-[8rem] whitespace-nowrap px-3 pb-2 text-right font-medium">{{ t('net_salary') }}</th>
               </tr>
@@ -464,10 +460,8 @@ async function postSlips() {
                 <td class="whitespace-nowrap px-3 py-2.5 text-right font-mono">{{ formatCurrency(emp.thirteenth_salary) }}</td>
                 <td class="whitespace-nowrap px-3 py-2.5 text-right font-mono text-red-600">{{ formatCurrency(-emp.unpaid_leave_amount) }}</td>
                 <td class="whitespace-nowrap px-3 py-2.5 text-right font-mono text-green-700 dark:text-green-400">{{ formatCurrency(emp.reimbursement_amount) }}</td>
-                <td class="whitespace-nowrap px-3 py-2.5 text-right font-mono text-red-600">{{ formatCurrency(-emp.avs) }}</td>
-                <td class="whitespace-nowrap px-3 py-2.5 text-right font-mono text-red-600">{{ formatCurrency(-emp.ac) }}</td>
-                <td class="whitespace-nowrap px-3 py-2.5 text-right font-mono text-red-600">{{ formatCurrency(-emp.aanp) }}</td>
-                <td class="whitespace-nowrap px-3 py-2.5 text-right font-mono text-red-600">{{ formatCurrency(-emp.lpp) }}</td>
+                <td class="whitespace-nowrap px-3 py-2.5 text-right font-mono">{{ formatCurrency(emp.social_charges_employer) }}</td>
+                <td class="whitespace-nowrap px-3 py-2.5 text-right font-mono text-red-600">{{ formatCurrency(-emp.social_charges_employee) }}</td>
                 <td v-if="withholdingTaxEnabled" class="whitespace-nowrap px-3 py-2.5 text-right font-mono text-red-600">{{ formatCurrency(-emp.source_tax) }}</td>
                 <td class="whitespace-nowrap px-3 py-2.5 text-right font-mono font-bold text-green-700 dark:text-green-400">{{ formatCurrency(emp.net) }}</td>
               </tr>
