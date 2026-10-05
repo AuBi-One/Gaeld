@@ -4,6 +4,8 @@ namespace App\Domains\Payroll\Models;
 
 use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Organizations\Models\Organization;
+use App\Domains\Payroll\Queries\DeductionRateSetQuery;
+use App\Domains\Payroll\Services\SwissDeductionService;
 use App\Support\Traits\Auditable;
 use App\Support\Traits\BelongsToOrganization;
 use Illuminate\Contracts\Encryption\DecryptException;
@@ -133,9 +135,51 @@ class SalarySlip extends Model
     }
 
     /**
+     * Keys {@see SwissDeductionService::calculateDeductions()} and
+     * the calculator add to `deductions` that are not themselves a per-charge amount.
+     */
+    private const NON_RATE_DEDUCTION_KEYS = [
+        'total_employee', 'total_employer', 'net_salary', 'base_salary',
+        'thirteenth_salary', 'unpaid_leave_days', 'unpaid_leave_amount',
+        'reimbursement_amount', 'source_tax',
+    ];
+
+    /**
+     * Every social-charge deduction actually on this slip, one row per
+     * charge (whatever its code — not a fixed AVS/AC/AANP/LPP list), with
+     * its employee and employer amounts and the name configured for it in
+     * Payroll > Charges sociales (or the built-in default's name, when the
+     * slip was calculated without a rate set). Used by both the standard
+     * PDF and the e-mail attachment.
+     *
+     * @return list<array{name: string, employee: string, employer: string}>
+     */
+    public function deductionRows(): array
+    {
+        $this->loadMissing('employee');
+        $deductions = $this->deductions;
+        $periodDate = Carbon::create($this->period_year, $this->period_month, 1)->toDateString();
+        $names = DeductionRateSetQuery::namesFor($this->organization_id, $this->employee->deduction_rate_code, $periodDate);
+
+        $rows = [];
+        foreach ($deductions as $code => $amount) {
+            if (in_array($code, self::NON_RATE_DEDUCTION_KEYS, true)) {
+                continue;
+            }
+
+            $key = (string) preg_replace('/_(employee|employer)$/', '', (string) $code);
+            $rows[$key] ??= ['name' => $names[$code] ?? $key, 'employee' => '0', 'employer' => '0'];
+            $side = str_ends_with((string) $code, '_employer') ? 'employer' : 'employee';
+            $rows[$key][$side] = (string) $amount;
+        }
+
+        return array_values($rows);
+    }
+
+    /**
      * Return the employee identity captured for generated documents.
      *
-     * @return array{first_name: string, last_name: string, email: string|null, ahv_number: string|null}
+     * @return array{first_name: string, last_name: string, email: string|null, ahv_number: string|null, iban: string|null}
      */
     public function employeeDocumentData(): array
     {
@@ -145,7 +189,8 @@ class SalarySlip extends Model
                 'first_name' => (string) $snapshot['first_name'],
                 'last_name' => (string) $snapshot['last_name'],
                 'email' => isset($snapshot['email']) ? (string) $snapshot['email'] : null,
-                'ahv_number' => $this->decryptSnapshotAhv($snapshot),
+                'ahv_number' => $this->decryptSnapshotField($snapshot, 'ahv_number'),
+                'iban' => $this->decryptSnapshotField($snapshot, 'iban'),
             ];
         }
 
@@ -165,25 +210,26 @@ class SalarySlip extends Model
             'last_name' => (string) $employee->last_name,
             'email' => $employee->email,
             'ahv_number' => $employee->ahv_number,
+            'iban' => $employee->iban,
         ];
     }
 
     /**
      * @param  array<string, mixed>  $snapshot
      */
-    private function decryptSnapshotAhv(array $snapshot): ?string
+    private function decryptSnapshotField(array $snapshot, string $key): ?string
     {
-        if (! isset($snapshot['ahv_number'])) {
+        if (! isset($snapshot[$key])) {
             return null;
         }
 
-        $ahvNumber = (string) $snapshot['ahv_number'];
-        if (($snapshot['ahv_number_encrypted'] ?? false) !== true) {
-            return $ahvNumber;
+        $value = (string) $snapshot[$key];
+        if (($snapshot["{$key}_encrypted"] ?? false) !== true) {
+            return $value;
         }
 
         try {
-            return Crypt::decryptString($ahvNumber);
+            return Crypt::decryptString($value);
         } catch (DecryptException) {
             return null;
         }

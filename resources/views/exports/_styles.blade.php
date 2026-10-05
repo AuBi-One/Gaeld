@@ -35,6 +35,9 @@
     tr.net-profit td, tr.net-change td { font-weight: bold; border-top: 3px double #1f2a24; font-size: 11pt; padding-top: 8px; }
     tr.payable td { font-weight: bold; border-top: 3px double #1f2a24; font-size: 11pt; padding-top: 8px; background: #fcf8ed; }
 
+    table.employee-info td { vertical-align: top; }
+    .info-label { display: block; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.03em; color: #777; margin-bottom: 1px; }
+
     .section { margin-top: 16px; margin-bottom: 6mm; }
     .section-title { font-size: 11pt; font-weight: bold; color: #1f2a24; background-color: #f3f5f3; padding: 5px 8px; border-left: 3px solid #3f8f61; border-bottom: 1px solid #cbd2cd; }
     .notice { margin-bottom: 7mm; padding: 3mm; border: 1px solid #c9a75b; color: #705623; background: #fcf8ed; font-size: 9pt; }

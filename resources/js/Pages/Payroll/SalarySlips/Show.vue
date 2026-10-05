@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useForm, Link, router } from '@inertiajs/vue3'
 import AppLayout from '@/Components/AppLayout.vue'
 import Card from '@/Components/UI/Card.vue'
@@ -19,6 +19,7 @@ const { formatCurrency } = useFormatters()
 const props = defineProps({
   slip: Object,
   canManage: { type: Boolean, default: true },
+  deductionNames: { type: Object, default: () => ({}) },
 })
 
 const postForm = useForm({})
@@ -52,9 +53,37 @@ function downloadPdf() {
   window.open(`/payroll/salary-slips/${props.slip.id}/pdf`, '_blank')
 }
 
-function deductionRow(label, employee, employer) {
-  return { label, employee, employer, total: (Number(employee) || 0) + (Number(employer) || 0) }
+// Keys the calculator/action add to `deductions` that are not themselves a
+// per-charge amount — never show these as a "charge sociale" row.
+const NON_RATE_DEDUCTION_KEYS = new Set([
+  'total_employee', 'total_employer', 'net_salary', 'base_salary',
+  'thirteenth_salary', 'unpaid_leave_days', 'unpaid_leave_amount',
+  'reimbursement_amount', 'source_tax',
+])
+
+function familyKey(code) {
+  return code.replace(/_(employee|employer)$/, '')
 }
+
+// One row per configured charge (whatever its code), not a fixed list of
+// four — a charge beyond AVS/AC/AANP/LPP (APGM, allocations familiales, ...)
+// must show up here the same way it already counts in the net salary.
+const deductionRows = computed(() => {
+  const groups = new Map()
+  for (const [code, rawAmount] of Object.entries(props.slip.deductions ?? {})) {
+    if (NON_RATE_DEDUCTION_KEYS.has(code)) continue
+    const amount = Number(rawAmount) || 0
+    if (!amount) continue
+    const key = familyKey(code)
+    if (!groups.has(key)) {
+      groups.set(key, { label: props.deductionNames?.[code] ?? key, employee: 0, employer: 0 })
+    }
+    const group = groups.get(key)
+    if (code.endsWith('_employer')) group.employer += amount
+    else group.employee += amount
+  }
+  return Array.from(groups.values()).map(g => ({ ...g, total: g.employee + g.employer }))
+})
 </script>
 
 <template>
@@ -134,12 +163,7 @@ function deductionRow(label, employee, employer) {
                 <td class="py-2.5 text-right font-mono">{{ formatCurrency(slip.gross_salary) }}</td>
               </tr>
               <!-- Deductions -->
-              <tr v-for="d in [
-                deductionRow(t('avs_employee'), slip.deductions?.avs_employee, slip.deductions?.avs_employer),
-                deductionRow(t('ac_employee'), slip.deductions?.ac_employee, slip.deductions?.ac_employer),
-                deductionRow(t('aanp_employee'), slip.deductions?.aanp_employee, slip.deductions?.aanp_employer),
-                deductionRow(t('lpp_employee'), slip.deductions?.lpp_employee, slip.deductions?.lpp_employer),
-              ]" :key="d.label" class="text-red-700 dark:text-red-400">
+              <tr v-for="d in deductionRows" :key="d.label" class="text-red-700 dark:text-red-400">
                 <td class="py-2">{{ d.label }}</td>
                 <td class="py-2 text-right font-mono">{{ formatCurrency(-d.employee) }}</td>
                 <td class="py-2 text-right font-mono">{{ formatCurrency(-d.employer) }}</td>

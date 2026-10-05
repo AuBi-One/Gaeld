@@ -117,6 +117,10 @@ class PayrollCalculator
                     ? Crypt::encryptString($employee->ahv_number)
                     : null,
                 'ahv_number_encrypted' => true,
+                'iban' => $employee->iban
+                    ? Crypt::encryptString($employee->iban)
+                    : null,
+                'iban_encrypted' => true,
             ],
         ]);
 

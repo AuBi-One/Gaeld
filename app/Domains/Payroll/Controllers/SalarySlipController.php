@@ -9,12 +9,14 @@ use App\Domains\Payroll\Actions\UnpostPayrollAction;
 use App\Domains\Payroll\Controllers\Concerns\EnsuresPayrollWritable;
 use App\Domains\Payroll\Models\Employee;
 use App\Domains\Payroll\Models\SalarySlip;
+use App\Domains\Payroll\Queries\DeductionRateSetQuery;
 use App\Domains\Payroll\Requests\PayrollAdjustmentRules;
 use App\Domains\Payroll\Services\PayrollCalculator;
 use App\Http\Controllers\Controller;
 use App\Support\FeatureFlag;
 use App\Support\Pdf\PdfLayouts;
 use App\Support\PdfExportService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -90,11 +92,14 @@ class SalarySlipController extends Controller
         $ownOnly = request()->user()->hasPermissionTo(Permission::PayrollSalarySlipsViewOwn)
             && ! request()->user()->hasPermissionTo(Permission::PayrollView);
 
+        $periodDate = Carbon::create($slip->period_year, $slip->period_month, 1)->toDateString();
+
         return Inertia::render('Payroll/SalarySlips/Show', [
             'slip' => $ownOnly
                 ? $slip->load('employee')->makeHidden(['journal_entry_id'])
                 : $slip->load(['employee', 'journalEntry.lines.account']),
             'canManage' => ! $ownOnly,
+            'deductionNames' => DeductionRateSetQuery::namesFor($slip->organization_id, $slip->employee->deduction_rate_code, $periodDate),
         ]);
     }
 
