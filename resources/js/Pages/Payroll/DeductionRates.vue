@@ -13,7 +13,7 @@ import FormInput from '@/Components/UI/FormInput.vue'
 import FormSelect from '@/Components/UI/FormSelect.vue'
 import ConfirmDialog from '@/Components/UI/ConfirmDialog.vue'
 import { useTranslations } from '@/lib/useTranslations'
-import { Trash2, Plus, Copy, ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { Trash2, Check, Copy, ChevronDown, ChevronRight } from 'lucide-vue-next'
 
 const props = defineProps({
   deductionRateSets: { type: Array, default: () => [] },
@@ -66,6 +66,7 @@ function toggle(setId) {
 // editable value here, or its input shows blank even though it did save.
 const rateEdits = ref({})
 const accountEdits = ref({})
+const nameEdits = ref({})
 const setEdits = ref({})
 watch(() => props.deductionRateSets, (sets) => {
   for (const set of sets) {
@@ -75,44 +76,68 @@ watch(() => props.deductionRateSets, (sets) => {
     for (const rate of set.rates ?? []) {
       if (!(rate.id in rateEdits.value)) rateEdits.value[rate.id] = String(rate.rate)
       if (!(rate.id in accountEdits.value)) accountEdits.value[rate.id] = rate.account_id ? String(rate.account_id) : ''
+      const key = familyKey(rate.code)
+      if (!(key in nameEdits.value)) nameEdits.value[key] = rate.name
     }
   }
 }, { immediate: true, deep: true })
 
+function putRate(rate, overrides = {}) {
+  return new Promise((resolve) => {
+    router.put(`/payroll/deduction-rates/${rate.id}`, {
+      name: rate.name,
+      rate: rateEdits.value[rate.id] ?? rate.rate,
+      type: rate.type,
+      is_active: rate.is_active,
+      account_id: accountEdits.value[rate.id] || null,
+      ...overrides,
+    }, { preserveScroll: true, onFinish: resolve })
+  })
+}
+
+function deleteRate(rate) {
+  return new Promise((resolve) => {
+    router.delete(`/payroll/deduction-rates/${rate.id}`, { preserveScroll: true, onFinish: resolve })
+  })
+}
+
+// A taux left empty means that side of the charge does not exist: clearing
+// an existing one removes it, the same as the single delete button would
+// for just that side.
 function maybeSaveRate(rate) {
   const value = rateEdits.value[rate.id]
-  if (value === '' || value == null || Number(value) === Number(rate.rate)) return
-  router.put(`/payroll/deduction-rates/${rate.id}`, {
-    name: rate.name,
-    rate: value,
-    type: rate.type,
-    is_active: rate.is_active,
-    account_id: accountEdits.value[rate.id] || null,
-  }, { preserveScroll: true })
+  if (value === '' || value == null) {
+    deleteRate(rate)
+    return
+  }
+  if (Number(value) === Number(rate.rate)) return
+  putRate(rate, { rate: value })
 }
 
 function saveRateAccount(rate) {
   const accountId = accountEdits.value[rate.id] || null
   if ((rate.account_id ?? null) === (accountId ? Number(accountId) : null)) return
-  router.put(`/payroll/deduction-rates/${rate.id}`, {
-    name: rate.name,
-    rate: rateEdits.value[rate.id] ?? rate.rate,
-    type: rate.type,
-    is_active: rate.is_active,
-    account_id: accountId,
-  }, { preserveScroll: true })
+  putRate(rate, { account_id: accountId })
+}
+
+async function saveName(group) {
+  const newName = (nameEdits.value[group.key] || '').trim()
+  if (!newName || newName === group.name) return
+  for (const rate of [group.employee, group.employer].filter(Boolean)) {
+    await putRate(rate, { name: newName })
+  }
 }
 
 const lineToDelete = ref(null)
-function confirmRemoveLine(rate) {
-  lineToDelete.value = rate
+function confirmRemoveLine(group) {
+  lineToDelete.value = group
 }
-function removeLine() {
+async function removeLine() {
   if (!lineToDelete.value) return
-  router.delete(`/payroll/deduction-rates/${lineToDelete.value.id}`, {
-    preserveScroll: true,
-    onFinish: () => { lineToDelete.value = null },
-  })
+  for (const rate of [lineToDelete.value.employee, lineToDelete.value.employer].filter(Boolean)) {
+    await deleteRate(rate)
+  }
+  lineToDelete.value = null
 }
 
 function slugify(name) {
@@ -309,7 +334,6 @@ function submitDuplicate(set) {
                       <th class="py-2 pr-2 font-medium">{{ t('deduction_rate_name_placeholder') }}</th>
                       <th class="py-2 pr-2 font-medium">{{ t('deduction_rate_employee') }}</th>
                       <th class="py-2 pr-2 font-medium">{{ t('deduction_rate_account') }}</th>
-                      <th class="w-9 py-2"></th>
                       <th class="py-2 pr-2 font-medium">{{ t('deduction_rate_employer') }}</th>
                       <th class="py-2 pr-2 font-medium">{{ t('deduction_rate_account') }}</th>
                       <th class="w-9 py-2"></th>
@@ -321,7 +345,13 @@ function submitDuplicate(set) {
                       :key="group.key"
                       class="border-b border-[hsl(var(--border))] last:border-0"
                     >
-                      <td class="py-2 pr-2 font-medium">{{ group.name }}</td>
+                      <td class="py-2 pr-2">
+                        <FormInput
+                          :id="'name-' + set.id + '-' + group.key"
+                          v-model="nameEdits[group.key]"
+                          @blur="saveName(group)"
+                        />
+                      </td>
 
                       <td class="py-2 pr-2">
                         <FormInput
@@ -342,16 +372,6 @@ function submitDuplicate(set) {
                           @update:model-value="saveRateAccount(group.employee)"
                         />
                         <span v-else class="text-xs text-[hsl(var(--muted-foreground))]">—</span>
-                      </td>
-                      <td class="py-2">
-                        <Button
-                          v-if="group.employee" variant="ghost" size="icon"
-                          :aria-label="t('delete') + ' ' + group.name + ' (' + t('deduction_rate_employee') + ')'"
-                          class="h-8 w-8 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))]"
-                          @click="confirmRemoveLine(group.employee)"
-                        >
-                          <Trash2 class="h-4 w-4" />
-                        </Button>
                       </td>
 
                       <td class="py-2 pr-2">
@@ -376,10 +396,10 @@ function submitDuplicate(set) {
                       </td>
                       <td class="py-2">
                         <Button
-                          v-if="group.employer" variant="ghost" size="icon"
-                          :aria-label="t('delete') + ' ' + group.name + ' (' + t('deduction_rate_employer') + ')'"
+                          variant="ghost" size="icon"
+                          :aria-label="t('delete') + ' ' + group.name"
                           class="h-8 w-8 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))]"
-                          @click="confirmRemoveLine(group.employer)"
+                          @click="confirmRemoveLine(group)"
                         >
                           <Trash2 class="h-4 w-4" />
                         </Button>
@@ -397,7 +417,6 @@ function submitDuplicate(set) {
                       <td class="py-2 pr-2">
                         <FormSelect :id="'new-line-ee-acc-' + set.id" v-model="newLineFor(set.id).employee_account_id" :options="accountOptions" class="w-48" />
                       </td>
-                      <td class="py-2"></td>
                       <td class="py-2 pr-2">
                         <FormInput :id="'new-line-er-' + set.id" v-model="newLineFor(set.id).employer_rate" type="number" step="0.01" min="0" max="100" class="w-24" />
                       </td>
@@ -411,7 +430,7 @@ function submitDuplicate(set) {
                           :disabled="addingLine === set.id || !canAddLine(set.id)"
                           @click="addLine(set.id)"
                         >
-                          <Plus class="h-4 w-4" />
+                          <Check class="h-4 w-4" />
                         </Button>
                       </td>
                     </tr>
@@ -433,7 +452,7 @@ function submitDuplicate(set) {
             <FormInput id="new_set_from" v-model="newSet.date_from" type="date" :label="t('from')" />
             <FormInput id="new_set_to" v-model="newSet.date_to" type="date" :label="t('to')" />
             <Button :disabled="addingSet || !canAddSet" @click="addSet">
-              <Plus class="mr-1 h-4 w-4" />
+              <Check class="mr-1 h-4 w-4" />
               {{ t('add') }}
             </Button>
           </div>
