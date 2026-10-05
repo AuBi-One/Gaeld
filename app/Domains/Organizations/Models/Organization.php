@@ -8,6 +8,8 @@ use App\Domains\Banking\Models\BankAccount;
 use App\Domains\Contacts\Models\Contact;
 use App\Domains\Expenses\Models\ExpenseCategory;
 use App\Domains\Organizations\Enums\BusinessType;
+use App\Domains\Payroll\Models\DeductionRate;
+use App\Domains\Payroll\Models\DeductionRateSet;
 use App\Domains\Users\Models\User;
 use App\Support\Contracts\SubscriptionContract;
 use App\Support\Traits\Auditable;
@@ -237,5 +239,17 @@ class Organization extends Model
     public function expenseCategories(): HasMany
     {
         return $this->hasMany(ExpenseCategory::class);
+    }
+
+    /** @return HasMany<DeductionRate, $this> */
+    public function deductionRates(): HasMany
+    {
+        return $this->hasMany(DeductionRate::class);
+    }
+
+    /** @return HasMany<DeductionRateSet, $this> */
+    public function deductionRateSets(): HasMany
+    {
+        return $this->hasMany(DeductionRateSet::class);
     }
 }

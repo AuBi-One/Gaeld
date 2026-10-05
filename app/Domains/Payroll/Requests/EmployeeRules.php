@@ -23,6 +23,7 @@ trait EmployeeRules
             'exit_date' => ['nullable', 'date', 'after_or_equal:entry_date'],
             'gross_salary' => ['required', 'numeric', 'min:0'],
             'is_active' => ['boolean'],
+            'deduction_rate_code' => ['nullable', 'string', 'max:50'],
             'is_source_tax_subject' => ['boolean'],
             'has_thirteenth_salary' => ['boolean'],
         ];

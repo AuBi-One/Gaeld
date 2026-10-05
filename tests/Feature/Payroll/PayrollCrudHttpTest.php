@@ -238,6 +238,33 @@ class PayrollCrudHttpTest extends TestCase
         ]);
     }
 
+    public function test_employee_update_saves_the_deduction_rate_code(): void
+    {
+        $employee = Employee::create([
+            'organization_id' => $this->org->id,
+            'first_name' => 'Old',
+            'last_name' => 'Name',
+            'entry_date' => '2026-01-01',
+            'gross_salary' => '5000.00',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($this->user)
+            ->put("/payroll/employees/{$employee->id}", [
+                'first_name' => 'Old',
+                'last_name' => 'Name',
+                'entry_date' => '2026-01-01',
+                'gross_salary' => '5000.00',
+                'deduction_rate_code' => 'STANDARD',
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('employees', [
+            'id' => $employee->id,
+            'deduction_rate_code' => 'STANDARD',
+        ]);
+    }
+
     public function test_employee_update_without_thirteenth_salary_field_preserves_existing_setting(): void
     {
         $employee = Employee::create([

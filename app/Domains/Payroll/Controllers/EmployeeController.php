@@ -9,6 +9,7 @@ use App\Domains\Payroll\Controllers\Concerns\EnsuresPayrollWritable;
 use App\Domains\Payroll\DTOs\CreateEmployeeData;
 use App\Domains\Payroll\DTOs\UpdateEmployeeData;
 use App\Domains\Payroll\Models\Employee;
+use App\Domains\Payroll\Queries\DeductionRateSetQuery;
 use App\Domains\Payroll\Queries\EmployeeQuery;
 use App\Domains\Payroll\Requests\StoreEmployeeRequest;
 use App\Domains\Payroll\Requests\UpdateEmployeeRequest;
@@ -43,6 +44,7 @@ class EmployeeController extends Controller
         $this->authorize('create', Employee::class);
 
         return Inertia::render('Payroll/Employees/Create', [
+            'deductionRateCodes' => DeductionRateSetQuery::codes(),
             'withholdingTaxEnabled' => FeatureFlag::enabledForOrg('withholding_tax', $currentOrg->get()),
         ]);
     }
@@ -93,6 +95,7 @@ class EmployeeController extends Controller
 
         return Inertia::render('Payroll/Employees/Edit', [
             'employee' => $employee,
+            'deductionRateCodes' => DeductionRateSetQuery::codes(),
             'withholdingTaxEnabled' => FeatureFlag::enabledForOrg('withholding_tax', $employee->organization),
         ]);
     }

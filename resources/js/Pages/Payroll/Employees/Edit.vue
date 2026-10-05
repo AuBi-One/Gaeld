@@ -18,8 +18,14 @@ const { t } = useTranslations()
 
 const props = defineProps({
   employee: Object,
+  deductionRateCodes: { type: Array, default: () => [] },
   withholdingTaxEnabled: { type: Boolean, default: false },
 })
+
+const deductionRateCodeOptions = [
+  { value: '', label: t('deduction_rate_code_none') },
+  ...props.deductionRateCodes.map(code => ({ value: code, label: code })),
+]
 
 const statusOptions = [
   { value: true, label: t('employee_status_active') },
@@ -47,6 +53,7 @@ const form = useForm({
   source_tax_municipality_code: props.employee.source_tax_municipality_code ?? '',
   iban: props.employee.iban ?? '',
   has_thirteenth_salary: props.employee.has_thirteenth_salary ?? false,
+  deduction_rate_code: props.employee.deduction_rate_code ?? '',
 })
 
 function submit() {
@@ -150,6 +157,16 @@ function submit() {
               :options="statusOptions"
               :error="form.errors.is_active"
             />
+            <div>
+              <FormSelect
+                id="deduction_rate_code"
+                v-model="form.deduction_rate_code"
+                :label="t('deduction_rate_code')"
+                :options="deductionRateCodeOptions"
+                :error="form.errors.deduction_rate_code"
+              />
+              <p class="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{{ t('deduction_rate_code_hint') }}</p>
+            </div>
             <label class="flex items-start gap-2 text-sm sm:col-span-2">
               <input
                 v-model="form.has_thirteenth_salary"

@@ -1,5 +1,7 @@
 <?php
 
+use App\Domains\Payroll\Controllers\DeductionRateController;
+use App\Domains\Payroll\Controllers\DeductionRateSetController;
 use App\Domains\Payroll\Controllers\EmployeeController;
 use App\Domains\Payroll\Controllers\PayrollRunController;
 use App\Domains\Payroll\Controllers\SalaryCertificateController;
@@ -31,6 +33,16 @@ Route::middleware('feature:payroll')->group(function () {
     Route::delete('/payroll/salary-slips/{slip}', [SalarySlipController::class, 'destroy'])->name('payroll.salarySlips.destroy');
 
     Route::get('/payroll/run', [PayrollRunController::class, 'index'])->name('payroll.run');
+
+    Route::get('/payroll/deduction-rates', [DeductionRateSetController::class, 'index'])->name('payroll.deduction-rates');
+    Route::post('/payroll/deduction-rates', [DeductionRateController::class, 'store'])->name('payroll.deduction-rates.lines.store');
+    Route::put('/payroll/deduction-rates/{deductionRate}', [DeductionRateController::class, 'update'])->name('payroll.deduction-rates.lines.update');
+    Route::delete('/payroll/deduction-rates/{deductionRate}', [DeductionRateController::class, 'destroy'])->name('payroll.deduction-rates.lines.destroy');
+
+    Route::post('/payroll/deduction-rate-sets', [DeductionRateSetController::class, 'store'])->name('payroll.deduction-rate-sets.store');
+    Route::put('/payroll/deduction-rate-sets/{deductionRateSet}', [DeductionRateSetController::class, 'update'])->name('payroll.deduction-rate-sets.update');
+    Route::delete('/payroll/deduction-rate-sets/{deductionRateSet}', [DeductionRateSetController::class, 'destroy'])->name('payroll.deduction-rate-sets.destroy');
+    Route::post('/payroll/deduction-rate-sets/{deductionRateSet}/duplicate', [DeductionRateSetController::class, 'duplicate'])->name('payroll.deduction-rate-sets.duplicate');
     Route::post('/payroll/run/preview', [PayrollRunController::class, 'preview'])->name('payroll.run.preview');
     Route::post('/payroll/run', [PayrollRunController::class, 'generate'])->name('payroll.run.generate');
 });

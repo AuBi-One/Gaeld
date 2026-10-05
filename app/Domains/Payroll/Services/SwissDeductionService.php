@@ -30,6 +30,17 @@ class SwissDeductionService
         ['code' => 'lpp_employer', 'name' => 'LPP (employer)', 'rate' => '7.0000', 'type' => 'employer'],
     ];
 
+    /**
+     * The built-in default rates, for seeding an organization's editable
+     * deduction rates the first time its settings are opened.
+     *
+     * @return list<array{code: string, name: string, rate: string, type: string}>
+     */
+    public static function defaults(): array
+    {
+        return self::DEFAULTS;
+    }
+
     // ──────────────────────────────────────────────────────────────
     //  Calculation
     // ──────────────────────────────────────────────────────────────

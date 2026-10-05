@@ -61,6 +61,7 @@ class Employee extends Model
         'exit_date',
         'gross_salary',
         'is_active',
+        'deduction_rate_code',
         'is_source_tax_subject',
         'has_thirteenth_salary',
         'source_tax_canton',

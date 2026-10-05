@@ -78,9 +78,13 @@ const salaryColumns = computed(() => [
               <p class="text-[hsl(var(--muted-foreground))]">{{ t('gross_salary') }}</p>
               <p class="font-medium font-mono">{{ formatCurrency(employee.gross_salary) }}</p>
             </div>
-            <div v-if="employee.iban" class="col-span-2">
+            <div v-if="employee.iban">
               <p class="text-[hsl(var(--muted-foreground))]">{{ t('iban') }}</p>
               <p class="font-medium font-mono">{{ employee.iban }}</p>
+            </div>
+            <div>
+              <p class="text-[hsl(var(--muted-foreground))]">{{ t('deduction_rate_code') }}</p>
+              <p class="font-medium font-mono">{{ employee.deduction_rate_code ?? '—' }}</p>
             </div>
           </div>
         </CardContent>

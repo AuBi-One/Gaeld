@@ -3,9 +3,9 @@
 namespace App\Domains\Payroll\Services;
 
 use App\Domains\Payroll\Contracts\SourceTaxServiceInterface;
-use App\Domains\Payroll\Models\DeductionRate;
 use App\Domains\Payroll\Models\Employee;
 use App\Domains\Payroll\Models\SalarySlip;
+use App\Domains\Payroll\Queries\DeductionRateSetQuery;
 use App\Support\Money;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Crypt;
@@ -72,9 +72,18 @@ class PayrollCalculator
             $unpaidLeaveAmount,
         );
 
-        $rates = DeductionRate::where('organization_id', $employee->organization_id)
-            ->where('is_active', true)
-            ->get();
+        // The set whose code matches the employee's and whose date range
+        // covers this payroll period is resolved automatically — the same
+        // code can point to a different set (different rates) each year
+        // without anything changing on the employee record.
+        $set = DeductionRateSetQuery::resolve(
+            $employee->organization_id,
+            $employee->deduction_rate_code,
+            $period->toDateString(),
+        );
+        $rates = $set
+            ? $set->rates()->where('is_active', true)->get()
+            : collect();
 
         $deductions = $this->deductionService->calculateDeductions($grossSalary, $rates);
         $deductions['base_salary'] = $baseSalary;
